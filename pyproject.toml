@@ -8,6 +8,9 @@ version = "0.1.0"
 description = "CLI wrapper around czkawka_cli for duplicate media workflows"
 readme = "README.md"
 requires-python = ">=3.11"
+dependencies = [
+    "rich>=13.7.0",
+]
 
 [project.scripts]
 czk = "czk_tool.cli:main"

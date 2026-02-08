@@ -22,6 +22,7 @@ class CliArgTests(unittest.TestCase):
         self.assertEqual(args.video_tolerance, 10)
         self.assertEqual(args.top, 50)
         self.assertEqual(args.out_dir, ".")
+        self.assertFalse(args.no_color)
 
     def test_execute_with_overrides(self) -> None:
         args = parse_args(
@@ -45,6 +46,10 @@ class CliArgTests(unittest.TestCase):
         self.assertEqual(args.top, 7)
         self.assertEqual(args.out_dir, "/tmp/out")
 
+    def test_no_color_flag(self) -> None:
+        args = parse_args(["execute", "--no-color"])
+        self.assertTrue(args.no_color)
+
     def test_invalid_video_tolerance(self) -> None:
         with self.assertRaises(SystemExit):
             parse_args(["test", "--video-tolerance", "21"])
@@ -52,4 +57,3 @@ class CliArgTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -75,6 +75,21 @@ czk test /path/to/target --top 10
   - preserve CSV column contract: `#, file_to_keep, files_to_remove, count`.
   - keep artifact naming deterministic and timestamped.
 
+## Output Style Contract (`czk`)
+
+- Keep grouped section order stable:
+  1. run header
+  2. per-media sections
+  3. combined summary
+- Keep on-screen duplicate preview columns stable:
+  - `#`, `file_to_keep`, `remove_count`, `first_remove`
+- Keep CSV schema stable:
+  - `#, file_to_keep, files_to_remove, count`
+- Color behavior:
+  - auto color on interactive TTY
+  - plain output when not a TTY
+  - `--no-color` forces plain output
+
 ## Common Tasks for Future Agents
 
 1. Add CLI option:

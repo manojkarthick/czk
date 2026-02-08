@@ -6,7 +6,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Literal, Sequence, cast
 
 from .counting import MediaType, count_media_files
 from .czkawka import (
@@ -15,9 +15,10 @@ from .czkawka import (
     format_command,
     run_czkawka,
 )
+from .rendering import RenderConfig, Renderer
 from .report import (
     MediaSummary,
-    build_pretty_table_from_csv,
+    build_preview_rows_from_csv,
     build_rows,
     build_summary,
     load_duplicate_groups,
@@ -97,6 +98,11 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         default=".",
         help="Directory where JSON and CSV artifacts are written.",
     )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Disable colored output.",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -123,7 +129,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 def _selected_media(media: str) -> list[MediaType]:
     if media == "both":
         return ["images", "videos"]
-    return [media]  # type: ignore[return-value]
+    return [cast(MediaType, media)]
 
 
 def _sanitize_name(value: str) -> str:
@@ -150,6 +156,7 @@ def _build_artifact_paths(
 
 def _run_one_media(
     *,
+    renderer: Renderer,
     mode: Mode,
     media: MediaType,
     target_dir: Path,
@@ -182,27 +189,25 @@ def _run_one_media(
         video_tolerance=video_tolerance,
     )
 
-    print("")
-    print(f"== {media.upper()} ({'DRY RUN' if dry_run else 'EXECUTE'}) ==")
-    print(f"Command: {format_command(command)}")
+    renderer.render_media_header(media=media, mode=mode, command=format_command(command))
+
     completed = run_czkawka(command)
-    print(f"Czkawka exit code: {completed.returncode}")
+    renderer.render_exit_code(completed.returncode)
 
     groups = load_duplicate_groups(json_path)
     rows = build_rows(groups, mode=mode)
     write_csv(rows, csv_path)
 
     summary = build_summary(total_found=total_found, duplicate_groups=len(groups), rows=rows)
-    print(f"total_found: {summary.total_found}")
-    print(f"duplicate_groups: {summary.duplicate_groups}")
-    print(f"duplicates_to_remove: {summary.duplicates_to_remove}")
-    print(f"after_remove_estimate: {summary.after_remove_estimate}")
-    print(f"json: {json_path}")
-    print(f"csv: {csv_path}")
+    renderer.render_metrics(summary)
+    renderer.render_artifacts(json_path=json_path, csv_path=csv_path)
 
-    table, total_rows, shown_rows = build_pretty_table_from_csv(csv_path, top=top)
-    print(f"table_rows_shown: {shown_rows}/{total_rows}")
-    print(table)
+    preview_rows, total_rows, shown_rows = build_preview_rows_from_csv(csv_path, top=top)
+    renderer.render_preview_table(
+        preview_rows=preview_rows,
+        shown_rows=shown_rows,
+        total_rows=total_rows,
+    )
 
     return MediaRunResult(media=media, summary=summary, json_path=json_path, csv_path=csv_path)
 
@@ -210,6 +215,8 @@ def _run_one_media(
 def main(argv: Sequence[str] | None = None) -> int:
     args = parse_args(argv)
     mode: Mode = args.command
+    render_config = RenderConfig(no_color=args.no_color, stdout_is_tty=sys.stdout.isatty())
+    renderer = Renderer(render_config)
 
     try:
         czkawka_executable = ensure_czkawka_cli()
@@ -224,15 +231,18 @@ def main(argv: Sequence[str] | None = None) -> int:
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         base_name = _sanitize_name(target_dir.name)
 
-        print(f"mode: {mode}")
-        print(f"target_dir: {target_dir}")
-        print(f"out_dir: {out_dir}")
-        print(f"timestamp: {timestamp}")
-        print(f"media: {', '.join(media_targets)}")
+        renderer.render_run_header(
+            mode=mode,
+            target_dir=target_dir,
+            out_dir=out_dir,
+            timestamp=timestamp,
+            media_targets=media_targets,
+        )
 
         results: list[MediaRunResult] = []
         for media in media_targets:
             result = _run_one_media(
+                renderer=renderer,
                 mode=mode,
                 media=media,
                 target_dir=target_dir,
@@ -247,20 +257,16 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             results.append(result)
 
-        combined_total = sum(result.summary.total_found for result in results)
-        combined_groups = sum(result.summary.duplicate_groups for result in results)
-        combined_remove = sum(result.summary.duplicates_to_remove for result in results)
-        combined_after = sum(result.summary.after_remove_estimate for result in results)
-
-        print("")
-        print("== COMBINED SUMMARY ==")
-        print(f"total_found: {combined_total}")
-        print(f"duplicate_groups: {combined_groups}")
-        print(f"duplicates_to_remove: {combined_remove}")
-        print(f"after_remove_estimate: {combined_after}")
+        combined_summary = MediaSummary(
+            total_found=sum(result.summary.total_found for result in results),
+            duplicate_groups=sum(result.summary.duplicate_groups for result in results),
+            duplicates_to_remove=sum(result.summary.duplicates_to_remove for result in results),
+            after_remove_estimate=sum(result.summary.after_remove_estimate for result in results),
+        )
+        renderer.render_combined_summary(combined_summary)
         return 0
     except (RuntimeError, ValueError) as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+        renderer.render_error("Run failed", str(exc))
         return 1
 
 

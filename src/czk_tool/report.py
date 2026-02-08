@@ -20,6 +20,14 @@ class DuplicateRow:
 
 
 @dataclass(frozen=True)
+class DuplicatePreviewRow:
+    index: int
+    file_to_keep: str
+    remove_count: int
+    first_remove: str
+
+
+@dataclass(frozen=True)
 class MediaSummary:
     total_found: int
     duplicate_groups: int
@@ -161,6 +169,16 @@ def write_csv(rows: list[DuplicateRow], csv_path: Path) -> None:
             )
 
 
+def preview_row_from_duplicate_row(row: DuplicateRow) -> DuplicatePreviewRow:
+    first_remove = row.files_to_remove[0] if row.files_to_remove else "-"
+    return DuplicatePreviewRow(
+        index=row.index,
+        file_to_keep=row.file_to_keep,
+        remove_count=row.count,
+        first_remove=first_remove,
+    )
+
+
 def build_summary(total_found: int, duplicate_groups: int, rows: list[DuplicateRow]) -> MediaSummary:
     duplicates_to_remove = sum(row.count for row in rows)
     after_remove_estimate = max(0, total_found - duplicates_to_remove)
@@ -176,6 +194,45 @@ def _read_csv_rows(csv_path: Path) -> list[dict[str, str]]:
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         return list(reader)
+
+
+def _parse_int(value: str, default: int) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _parse_remove_list(raw_value: str) -> list[str]:
+    try:
+        value = json.loads(raw_value)
+    except json.JSONDecodeError:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value]
+    return []
+
+
+def build_preview_rows_from_csv(
+    csv_path: Path,
+    top: int,
+) -> tuple[list[DuplicatePreviewRow], int, int]:
+    rows = _read_csv_rows(csv_path)
+    total_rows = len(rows)
+    shown_rows = rows[: max(0, top)]
+
+    preview_rows: list[DuplicatePreviewRow] = []
+    for ordinal, row in enumerate(shown_rows, start=1):
+        files_to_remove = _parse_remove_list(row.get("files_to_remove", "[]"))
+        parsed_row = DuplicateRow(
+            index=_parse_int(row.get("#", ""), ordinal),
+            file_to_keep=row.get("file_to_keep", ""),
+            files_to_remove=files_to_remove,
+            count=_parse_int(row.get("count", ""), len(files_to_remove)),
+        )
+        preview_rows.append(preview_row_from_duplicate_row(parsed_row))
+
+    return preview_rows, total_rows, len(preview_rows)
 
 
 def _clip(value: str, width: int) -> str:

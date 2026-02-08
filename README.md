@@ -25,7 +25,7 @@ czk execute [directory]
 
 ## czk (Python CLI Wrapper)
 
-High-level wrapper over `czkawka_cli` for image/video duplicate workflows with readable summaries and CSV reports.
+High-level wrapper over `czkawka_cli` for image/video duplicate workflows with grouped, colorized terminal output plus CSV reports.
 
 ### Commands
 
@@ -57,6 +57,7 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with r
 - `--video-tolerance 0..20`
 - `--top N` (table rows to print; default 50)
 - `--out-dir <path>`
+- `--no-color` (force plain output; default is auto-color on TTY)
 
 ### Output files
 
@@ -80,6 +81,18 @@ Per media type and combined summary:
 - `duplicate_groups`
 - `duplicates_to_remove`
 - `after_remove_estimate`
+
+### Output structure (concise)
+
+Each run prints grouped sections in this order:
+
+1. Run header (`mode`, `target_dir`, `out_dir`, `timestamp`, `media`)
+2. Per-media section (`images`, `videos`):
+   - command + exit code
+   - metrics table
+   - artifact paths
+   - duplicate preview table (`#`, `file_to_keep`, `remove_count`, `first_remove`)
+3. Combined summary
 
 ## check_codecs.sh
 

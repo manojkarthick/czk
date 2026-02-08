@@ -11,7 +11,12 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from czk_tool.report import DuplicateRow, build_pretty_table_from_csv, write_csv
+from czk_tool.report import (
+    DuplicateRow,
+    build_preview_rows_from_csv,
+    build_pretty_table_from_csv,
+    write_csv,
+)
 
 
 class CsvOutputTests(unittest.TestCase):
@@ -60,7 +65,28 @@ class CsvOutputTests(unittest.TestCase):
             self.assertEqual(total, 2)
             self.assertEqual(shown, 1)
 
+    def test_build_preview_rows_from_csv_extracts_first_remove(self) -> None:
+        rows = [
+            DuplicateRow(
+                index=1,
+                file_to_keep="/tmp/keep.jpg",
+                files_to_remove=["/tmp/r1.jpg", "/tmp/r2.jpg"],
+                count=2,
+            )
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            csv_path = Path(tmp_dir) / "report.csv"
+            write_csv(rows, csv_path)
+            preview_rows, total_rows, shown_rows = build_preview_rows_from_csv(csv_path, top=10)
+
+            self.assertEqual(total_rows, 1)
+            self.assertEqual(shown_rows, 1)
+            self.assertEqual(preview_rows[0].index, 1)
+            self.assertEqual(preview_rows[0].file_to_keep, "/tmp/keep.jpg")
+            self.assertEqual(preview_rows[0].remove_count, 2)
+            self.assertEqual(preview_rows[0].first_remove, "/tmp/r1.jpg")
+
 
 if __name__ == "__main__":
     unittest.main()
-
