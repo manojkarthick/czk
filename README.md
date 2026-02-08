@@ -68,7 +68,7 @@ Per media type, per run:
 
 CSV columns:
 
-1. `#`
+1. `index`
 2. `file_to_keep`
 3. `files_to_remove` (JSON array string)
 4. `count` (number of files to remove)
@@ -92,8 +92,8 @@ Each run prints grouped sections in this order:
    - summary table (human-readable labels)
    - artifact paths
    - duplicate preview:
-     - wide terminals: `#`, `file_to_keep`, `remove_count`, `first_remove`
-     - medium terminals: `#`, `file_to_keep`, `remove_count`
+     - wide terminals: `index`, `file_to_keep`, `remove_count`, `first_remove`
+     - medium terminals: `index`, `file_to_keep`, `remove_count`
      - narrow terminals: bordered list-style groups
 
 Command display notes:

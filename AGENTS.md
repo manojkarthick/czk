@@ -72,7 +72,7 @@ czk test /path/to/target --top 10
   - maintain stdlib-only approach unless dependency is necessary.
   - keep CLI output readable and stable for downstream parsing.
 - For report changes:
-  - preserve CSV column contract: `#, file_to_keep, files_to_remove, count`.
+  - preserve CSV column contract: `index, file_to_keep, files_to_remove, count`.
   - keep artifact naming deterministic and timestamped.
 
 ## Output Style Contract (`czk`)
@@ -81,14 +81,14 @@ czk test /path/to/target --top 10
   1. run header
   2. per-media sections
 - Keep on-screen duplicate preview columns stable:
-  - wide: `#`, `file_to_keep`, `remove_count`, `first_remove`
-  - medium: `#`, `file_to_keep`, `remove_count`
+  - wide: `index`, `file_to_keep`, `remove_count`, `first_remove`
+  - medium: `index`, `file_to_keep`, `remove_count`
   - narrow: bordered list-style preview blocks
 - Keep command block compact and readable:
   - multiline shell-style formatting with `\`
   - shorten long path arguments with placeholders (for example `<target-folder>`, `<json-report>`)
 - Keep CSV schema stable:
-  - `#, file_to_keep, files_to_remove, count`
+  - `index, file_to_keep, files_to_remove, count`
 - Color behavior:
   - auto color on interactive TTY
   - plain output when not a TTY
@@ -102,16 +102,16 @@ czk test /path/to/target --top 10
 ## Common Tasks for Future Agents
 
 1. Add CLI option:
-   - update `/Users/manojkarthick/code/sandbox/datahoarding/scripts/src/czk_tool/cli.py`
+   - update `src/czk_tool/cli.py`
    - thread value into runner/report modules
-   - add tests in `/Users/manojkarthick/code/sandbox/datahoarding/scripts/tests/`
+   - add tests in `tests/`
 
 2. Adjust Czkawka behavior:
-   - update command construction in `/Users/manojkarthick/code/sandbox/datahoarding/scripts/src/czk_tool/czkawka.py`
+   - update command construction in `src/czk_tool/czkawka.py`
    - verify with dry-run smoke test
 
 3. Modify reporting/counting:
-   - update `/Users/manojkarthick/code/sandbox/datahoarding/scripts/src/czk_tool/report.py` or `/Users/manojkarthick/code/sandbox/datahoarding/scripts/src/czk_tool/counting.py`
+   - update `src/czk_tool/report.py` or `src/czk_tool/counting.py`
    - run unit tests
 
 ## Output Expectations

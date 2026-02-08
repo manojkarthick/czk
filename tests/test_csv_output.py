@@ -43,7 +43,7 @@ class CsvOutputTests(unittest.TestCase):
             with csv_path.open("r", encoding="utf-8", newline="") as handle:
                 reader = csv.DictReader(handle)
                 loaded = list(reader)
-                self.assertEqual(reader.fieldnames, ["#", "file_to_keep", "files_to_remove", "count"])
+                self.assertEqual(reader.fieldnames, ["index", "file_to_keep", "files_to_remove", "count"])
 
             self.assertEqual(len(loaded), 2)
             self.assertEqual(json.loads(loaded[0]["files_to_remove"]), ["/tmp/b.jpg", "/tmp/c.jpg"])

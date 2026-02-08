@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 Mode = Literal["test", "execute"]
 
-CSV_COLUMNS = ["#", "file_to_keep", "files_to_remove", "count"]
+CSV_COLUMNS = ["index", "file_to_keep", "files_to_remove", "count"]
 
 
 @dataclass(frozen=True)
@@ -161,7 +161,7 @@ def write_csv(rows: list[DuplicateRow], csv_path: Path) -> None:
         for row in rows:
             writer.writerow(
                 {
-                    "#": row.index,
+                    "index": row.index,
                     "file_to_keep": row.file_to_keep,
                     "files_to_remove": json.dumps(row.files_to_remove, ensure_ascii=False),
                     "count": row.count,
@@ -224,8 +224,9 @@ def build_preview_rows_from_csv(
     preview_rows: list[DuplicatePreviewRow] = []
     for ordinal, row in enumerate(shown_rows, start=1):
         files_to_remove = _parse_remove_list(row.get("files_to_remove", "[]"))
+        row_index = row.get("index", row.get("#", ""))
         parsed_row = DuplicateRow(
-            index=_parse_int(row.get("#", ""), ordinal),
+            index=_parse_int(row_index, ordinal),
             file_to_keep=row.get("file_to_keep", ""),
             files_to_remove=files_to_remove,
             count=_parse_int(row.get("count", ""), len(files_to_remove)),
@@ -245,20 +246,25 @@ def _clip(value: str, width: int) -> str:
 
 def build_pretty_table_from_csv(csv_path: Path, top: int) -> tuple[str, int, int]:
     rows = _read_csv_rows(csv_path)
+    normalized_rows: list[dict[str, str]] = []
+    for row in rows:
+        normalized = dict(row)
+        normalized["index"] = row.get("index", row.get("#", ""))
+        normalized_rows.append(normalized)
     total_rows = len(rows)
-    shown_rows = rows[: max(0, top)]
+    shown_rows = normalized_rows[: max(0, top)]
 
     if not shown_rows:
         return "(no duplicate rows)", total_rows, 0
 
     widths = {
-        "#": 4,
+        "index": 5,
         "file_to_keep": 70,
         "files_to_remove": 90,
         "count": 6,
     }
     for row in shown_rows:
-        widths["#"] = max(widths["#"], min(6, len(row["#"])))
+        widths["index"] = max(widths["index"], min(8, len(row.get("index", ""))))
         widths["file_to_keep"] = max(
             widths["file_to_keep"], min(100, len(row["file_to_keep"]))
         )
@@ -269,21 +275,21 @@ def build_pretty_table_from_csv(csv_path: Path, top: int) -> tuple[str, int, int
 
     def format_row(values: dict[str, str]) -> str:
         return (
-            f"{_clip(values['#'], widths['#']):<{widths['#']}} | "
+            f"{_clip(values['index'], widths['index']):<{widths['index']}} | "
             f"{_clip(values['file_to_keep'], widths['file_to_keep']):<{widths['file_to_keep']}} | "
             f"{_clip(values['files_to_remove'], widths['files_to_remove']):<{widths['files_to_remove']}} | "
             f"{_clip(values['count'], widths['count']):<{widths['count']}}"
         )
 
     header_values = {
-        "#": "#",
+        "index": "index",
         "file_to_keep": "file_to_keep",
         "files_to_remove": "files_to_remove",
         "count": "count",
     }
     header = format_row(header_values)
     separator = (
-        f"{'-' * widths['#']}-+-"
+        f"{'-' * widths['index']}-+-"
         f"{'-' * widths['file_to_keep']}-+-"
         f"{'-' * widths['files_to_remove']}-+-"
         f"{'-' * widths['count']}"

@@ -196,7 +196,7 @@ class Renderer:
 
         include_first_remove = layout == "wide"
         table = Table(title="Duplicate Preview", box=box.ROUNDED, expand=True)
-        table.add_column("#", style="bold cyan", no_wrap=True)
+        table.add_column("index", style="bold cyan", no_wrap=True)
         table.add_column("file_to_keep", style="white", overflow="fold")
         table.add_column("remove_count", style="yellow", no_wrap=True)
         if include_first_remove:

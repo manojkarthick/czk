@@ -218,3 +218,4 @@ __marimo__/
 # czkawka json files
 all-image-dupes.json
 all-video-dupes.json
+*-dupes.json

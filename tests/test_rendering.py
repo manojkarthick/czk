@@ -123,6 +123,7 @@ class RenderingTests(unittest.TestCase):
         )
         wide_renderer.render_preview_table(preview_rows=[row], shown_rows=1, total_rows=1)
         wide_output = wide_buffer.getvalue()
+        self.assertIn("index", wide_output)
         self.assertIn("first_remove", wide_output)
 
         medium_buffer = io.StringIO()
@@ -132,6 +133,7 @@ class RenderingTests(unittest.TestCase):
         )
         medium_renderer.render_preview_table(preview_rows=[row], shown_rows=1, total_rows=1)
         medium_output = medium_buffer.getvalue()
+        self.assertIn("index", medium_output)
         self.assertIn("remove_count", medium_output)
         self.assertNotIn("first_remove", medium_output)
 
