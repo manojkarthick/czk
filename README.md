@@ -75,12 +75,12 @@ CSV columns:
 
 ### Reported metrics
 
-Per media section:
+Per media section (human-readable labels in terminal):
 
-- `total_found`
-- `duplicate_groups`
-- `duplicates_to_remove`
-- `after_remove_estimate`
+- `Total Files Scanned`
+- `Duplicate Groups Found`
+- `Files Marked for Removal` (red value)
+- `Estimated Files Remaining` (green value)
 
 ### Output structure (concise)
 
@@ -88,13 +88,18 @@ Each run prints grouped sections in this order:
 
 1. Run header (`mode`, `target_dir`, `out_dir`, `timestamp`, `media`)
 2. Per-media section (`images`, `videos`):
-   - command + exit code
+   - compact command representation + exit code
    - summary table (human-readable labels)
    - artifact paths
    - duplicate preview:
      - wide terminals: `#`, `file_to_keep`, `remove_count`, `first_remove`
      - medium terminals: `#`, `file_to_keep`, `remove_count`
      - narrow terminals: bordered list-style groups
+
+Command display notes:
+
+- Command output is intentionally compact and readable (representation, not exact shell replay).
+- Long path values are shortened to placeholders such as `<target-folder>` and `<json-report>`.
 
 ## check_codecs.sh
 

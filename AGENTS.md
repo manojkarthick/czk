@@ -84,6 +84,9 @@ czk test /path/to/target --top 10
   - wide: `#`, `file_to_keep`, `remove_count`, `first_remove`
   - medium: `#`, `file_to_keep`, `remove_count`
   - narrow: bordered list-style preview blocks
+- Keep command block compact and readable:
+  - multiline shell-style formatting with `\`
+  - shorten long path arguments with placeholders (for example `<target-folder>`, `<json-report>`)
 - Keep CSV schema stable:
   - `#, file_to_keep, files_to_remove, count`
 - Color behavior:
@@ -92,6 +95,9 @@ czk test /path/to/target --top 10
   - `--no-color` forces plain output
 - Keep all labels human-readable in terminal output (avoid internal key names).
 - Keep preview display compact (filename-only), while CSV keeps full paths.
+- Summary value color cues:
+  - `Files Marked for Removal` value in red
+  - `Estimated Files Remaining` value in green
 
 ## Common Tasks for Future Agents
 
