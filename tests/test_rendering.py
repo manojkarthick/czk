@@ -81,8 +81,9 @@ class RenderingTests(unittest.TestCase):
         output = buffer.getvalue()
         self.assertIn("Command", output)
         self.assertIn("czkawka_cli video \\", output)
-        self.assertIn("  -d /tmp/input \\", output)
+        self.assertIn("  -d <target-folder> \\", output)
         self.assertIn("  -D AEB", output)
+        self.assertNotIn("/tmp/input", output)
 
     def test_preview_compacts_to_filename_only(self) -> None:
         buffer = io.StringIO()
@@ -155,4 +156,3 @@ class RenderingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

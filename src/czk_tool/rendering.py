@@ -9,6 +9,7 @@ from rich import box
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from .counting import MediaType
 from .report import DuplicatePreviewRow, MediaSummary
@@ -58,6 +59,21 @@ def _compact_name(path_value: str) -> str:
     return Path(path_value).name or path_value
 
 
+def _compact_command_value(flag: str, value: str) -> str:
+    placeholders = {
+        "-d": "<target-folder>",
+        "--directories": "<target-folder>",
+        "-p": "<json-report>",
+        "--pretty-file-to-save": "<json-report>",
+    }
+    if flag in placeholders:
+        return placeholders[flag]
+    if "/" in value:
+        name = Path(value).name
+        return f".../{name}" if name else "<path>"
+    return value
+
+
 def _format_command_shell(command: list[str]) -> str:
     if not command:
         return ""
@@ -75,7 +91,7 @@ def _format_command_shell(command: list[str]) -> str:
     while index < len(parts):
         token = parts[index]
         if token.startswith("-") and index + 1 < len(parts) and not parts[index + 1].startswith("-"):
-            grouped.append(f"{token} {parts[index + 1]}")
+            grouped.append(f"{token} {_compact_command_value(token, parts[index + 1])}")
             index += 2
         else:
             grouped.append(token)
@@ -141,7 +157,13 @@ class Renderer:
         summary_table.add_column("Field", style="bold cyan")
         summary_table.add_column("Value", style="white")
         for label, value in _friendly_summary_rows(summary):
-            summary_table.add_row(label, value)
+            if label == "Files Marked for Removal":
+                value_text = Text(value, style="red")
+            elif label == "Estimated Files Remaining":
+                value_text = Text(value, style="green")
+            else:
+                value_text = Text(value, style="white")
+            summary_table.add_row(label, value_text)
         self.console.print(summary_table)
 
     def render_artifacts(self, *, json_path: Path, csv_path: Path) -> None:
