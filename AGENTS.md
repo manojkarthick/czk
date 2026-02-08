@@ -80,15 +80,18 @@ czk test /path/to/target --top 10
 - Keep grouped section order stable:
   1. run header
   2. per-media sections
-  3. combined summary
 - Keep on-screen duplicate preview columns stable:
-  - `#`, `file_to_keep`, `remove_count`, `first_remove`
+  - wide: `#`, `file_to_keep`, `remove_count`, `first_remove`
+  - medium: `#`, `file_to_keep`, `remove_count`
+  - narrow: bordered list-style preview blocks
 - Keep CSV schema stable:
   - `#, file_to_keep, files_to_remove, count`
 - Color behavior:
   - auto color on interactive TTY
   - plain output when not a TTY
   - `--no-color` forces plain output
+- Keep all labels human-readable in terminal output (avoid internal key names).
+- Keep preview display compact (filename-only), while CSV keeps full paths.
 
 ## Common Tasks for Future Agents
 

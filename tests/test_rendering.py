@@ -14,9 +14,12 @@ from czk_tool.rendering import RenderConfig, Renderer
 
 
 class RenderingTests(unittest.TestCase):
-    def test_no_color_mode_has_required_fields_without_ansi(self) -> None:
+    def test_friendly_labels_and_no_ansi(self) -> None:
         buffer = io.StringIO()
-        renderer = Renderer(RenderConfig(no_color=True, stdout_is_tty=True), file=buffer)
+        renderer = Renderer(
+            RenderConfig(no_color=True, stdout_is_tty=True, terminal_width=140),
+            file=buffer,
+        )
 
         renderer.render_run_header(
             mode="test",
@@ -28,10 +31,10 @@ class RenderingTests(unittest.TestCase):
         renderer.render_media_header(
             media="images",
             mode="test",
-            command="czkawka_cli image -d /tmp/data ...",
+            command=["/opt/homebrew/bin/czkawka_cli", "image", "-d", "/tmp/data", "--dry-run"],
         )
         renderer.render_exit_code(0)
-        renderer.render_metrics(
+        renderer.render_summary(
             MediaSummary(
                 total_found=100,
                 duplicate_groups=10,
@@ -43,50 +46,103 @@ class RenderingTests(unittest.TestCase):
             json_path=Path("/tmp/out/demo-images-20260208-140000.json"),
             csv_path=Path("/tmp/out/demo-images-20260208-140000.csv"),
         )
+
+        output = buffer.getvalue()
+        self.assertIn("Run Overview", output)
+        self.assertIn("Run Mode", output)
+        self.assertIn("Summary", output)
+        self.assertIn("Total Files Scanned", output)
+        self.assertIn("Duplicate Groups Found", output)
+        self.assertIn("Files Marked for Removal", output)
+        self.assertIn("Estimated Files Remaining", output)
+        self.assertNotIn("\x1b[", output)
+        self.assertNotIn("combined summary", output.lower())
+
+    def test_command_multiline_has_backslash_continuation(self) -> None:
+        buffer = io.StringIO()
+        renderer = Renderer(
+            RenderConfig(no_color=True, stdout_is_tty=False, terminal_width=120),
+            file=buffer,
+        )
+        renderer.render_media_header(
+            media="videos",
+            mode="execute",
+            command=[
+                "/opt/homebrew/bin/czkawka_cli",
+                "video",
+                "-d",
+                "/tmp/input",
+                "-t",
+                "10",
+                "-D",
+                "AEB",
+            ],
+        )
+        output = buffer.getvalue()
+        self.assertIn("Command", output)
+        self.assertIn("czkawka_cli video \\", output)
+        self.assertIn("  -d /tmp/input \\", output)
+        self.assertIn("  -D AEB", output)
+
+    def test_preview_compacts_to_filename_only(self) -> None:
+        buffer = io.StringIO()
+        renderer = Renderer(
+            RenderConfig(no_color=True, stdout_is_tty=False, terminal_width=140),
+            file=buffer,
+        )
         renderer.render_preview_table(
             preview_rows=[
                 DuplicatePreviewRow(
                     index=1,
-                    file_to_keep="/tmp/data/keep.jpg",
+                    file_to_keep="/tmp/a/very/deep/path/keep-file.jpg",
                     remove_count=2,
-                    first_remove="/tmp/data/remove.jpg",
+                    first_remove="/tmp/b/another/deep/path/remove-file.jpg",
                 )
             ],
             shown_rows=1,
-            total_rows=1,
-        )
-        renderer.render_combined_summary(
-            MediaSummary(
-                total_found=100,
-                duplicate_groups=10,
-                duplicates_to_remove=20,
-                after_remove_estimate=80,
-            )
-        )
-
-        output = buffer.getvalue()
-        self.assertIn("mode", output)
-        self.assertIn("target_dir", output)
-        self.assertIn("metrics", output)
-        self.assertIn("artifacts", output)
-        self.assertIn("table_rows_shown: 1/1", output)
-        self.assertNotIn("\x1b[", output)
-
-    def test_preview_table_headers_present(self) -> None:
-        buffer = io.StringIO()
-        renderer = Renderer(RenderConfig(no_color=True, stdout_is_tty=False), file=buffer)
-        renderer.render_preview_table(
-            preview_rows=[
-                DuplicatePreviewRow(index=1, file_to_keep="/tmp/a", remove_count=1, first_remove="/tmp/b")
-            ],
-            shown_rows=1,
-            total_rows=2,
+            total_rows=3,
         )
         output = buffer.getvalue()
-        self.assertIn("#", output)
-        self.assertIn("file_to_keep", output)
-        self.assertIn("remove_count", output)
-        self.assertIn("first_remove", output)
+        self.assertIn("keep-file.jpg", output)
+        self.assertIn("remove-file.jpg", output)
+        self.assertNotIn("/tmp/a/very/deep/path/keep-file.jpg", output)
+
+    def test_preview_wide_medium_narrow_layouts(self) -> None:
+        row = DuplicatePreviewRow(
+            index=1,
+            file_to_keep="/tmp/path/keep.jpg",
+            remove_count=1,
+            first_remove="/tmp/path/remove.jpg",
+        )
+
+        wide_buffer = io.StringIO()
+        wide_renderer = Renderer(
+            RenderConfig(no_color=True, stdout_is_tty=False, terminal_width=140),
+            file=wide_buffer,
+        )
+        wide_renderer.render_preview_table(preview_rows=[row], shown_rows=1, total_rows=1)
+        wide_output = wide_buffer.getvalue()
+        self.assertIn("first_remove", wide_output)
+
+        medium_buffer = io.StringIO()
+        medium_renderer = Renderer(
+            RenderConfig(no_color=True, stdout_is_tty=False, terminal_width=100),
+            file=medium_buffer,
+        )
+        medium_renderer.render_preview_table(preview_rows=[row], shown_rows=1, total_rows=1)
+        medium_output = medium_buffer.getvalue()
+        self.assertIn("remove_count", medium_output)
+        self.assertNotIn("first_remove", medium_output)
+
+        narrow_buffer = io.StringIO()
+        narrow_renderer = Renderer(
+            RenderConfig(no_color=True, stdout_is_tty=False, terminal_width=70),
+            file=narrow_buffer,
+        )
+        narrow_renderer.render_preview_table(preview_rows=[row], shown_rows=1, total_rows=1)
+        narrow_output = narrow_buffer.getvalue()
+        self.assertIn("Duplicate Preview", narrow_output)
+        self.assertIn("Group", narrow_output)
 
     def test_auto_plain_output_when_not_tty(self) -> None:
         buffer = io.StringIO()
@@ -99,3 +155,4 @@ class RenderingTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

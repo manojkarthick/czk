@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import re
 import sys
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Sequence, cast
@@ -12,18 +11,10 @@ from .counting import MediaType, count_media_files
 from .czkawka import (
     build_czkawka_command,
     ensure_czkawka_cli,
-    format_command,
     run_czkawka,
 )
 from .rendering import RenderConfig, Renderer
-from .report import (
-    MediaSummary,
-    build_preview_rows_from_csv,
-    build_rows,
-    build_summary,
-    load_duplicate_groups,
-    write_csv,
-)
+from .report import build_preview_rows_from_csv, build_rows, build_summary, load_duplicate_groups, write_csv
 
 Mode = Literal["test", "execute"]
 
@@ -36,14 +27,6 @@ IMAGE_SIMILARITY_CHOICES = (
     "VeryHigh",
     "None",
 )
-
-
-@dataclass(frozen=True)
-class MediaRunResult:
-    media: MediaType
-    summary: MediaSummary
-    json_path: Path
-    csv_path: Path
 
 
 def _positive_int(value: str) -> int:
@@ -168,7 +151,7 @@ def _run_one_media(
     image_similarity: str,
     video_tolerance: int,
     top: int,
-) -> MediaRunResult:
+) -> None:
     dry_run = mode == "test"
     total_found = count_media_files(target_dir, media)
     json_path, csv_path = _build_artifact_paths(
@@ -189,7 +172,7 @@ def _run_one_media(
         video_tolerance=video_tolerance,
     )
 
-    renderer.render_media_header(media=media, mode=mode, command=format_command(command))
+    renderer.render_media_header(media=media, mode=mode, command=command)
 
     completed = run_czkawka(command)
     renderer.render_exit_code(completed.returncode)
@@ -199,7 +182,7 @@ def _run_one_media(
     write_csv(rows, csv_path)
 
     summary = build_summary(total_found=total_found, duplicate_groups=len(groups), rows=rows)
-    renderer.render_metrics(summary)
+    renderer.render_summary(summary)
     renderer.render_artifacts(json_path=json_path, csv_path=csv_path)
 
     preview_rows, total_rows, shown_rows = build_preview_rows_from_csv(csv_path, top=top)
@@ -209,7 +192,7 @@ def _run_one_media(
         total_rows=total_rows,
     )
 
-    return MediaRunResult(media=media, summary=summary, json_path=json_path, csv_path=csv_path)
+    return None
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -239,9 +222,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             media_targets=media_targets,
         )
 
-        results: list[MediaRunResult] = []
         for media in media_targets:
-            result = _run_one_media(
+            _run_one_media(
                 renderer=renderer,
                 mode=mode,
                 media=media,
@@ -255,15 +237,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 video_tolerance=args.video_tolerance,
                 top=args.top,
             )
-            results.append(result)
-
-        combined_summary = MediaSummary(
-            total_found=sum(result.summary.total_found for result in results),
-            duplicate_groups=sum(result.summary.duplicate_groups for result in results),
-            duplicates_to_remove=sum(result.summary.duplicates_to_remove for result in results),
-            after_remove_estimate=sum(result.summary.after_remove_estimate for result in results),
-        )
-        renderer.render_combined_summary(combined_summary)
         return 0
     except (RuntimeError, ValueError) as exc:
         renderer.render_error("Run failed", str(exc))

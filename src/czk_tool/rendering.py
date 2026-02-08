@@ -20,6 +20,7 @@ Mode = Literal["test", "execute"]
 class RenderConfig:
     no_color: bool
     stdout_is_tty: bool
+    terminal_width: int | None = None
 
 
 def create_console(config: RenderConfig, file: TextIO | None = None) -> Console:
@@ -30,6 +31,7 @@ def create_console(config: RenderConfig, file: TextIO | None = None) -> Console:
         color_system="auto" if enable_color else None,
         no_color=not enable_color,
         highlight=False,
+        width=config.terminal_width,
     )
 
 
@@ -39,6 +41,59 @@ def _format_number(value: int) -> str:
 
 def _mode_label(mode: Mode) -> str:
     return "DRY RUN" if mode == "test" else "EXECUTE"
+
+
+def _friendly_summary_rows(summary: MediaSummary) -> list[tuple[str, str]]:
+    return [
+        ("Total Files Scanned", _format_number(summary.total_found)),
+        ("Duplicate Groups Found", _format_number(summary.duplicate_groups)),
+        ("Files Marked for Removal", _format_number(summary.duplicates_to_remove)),
+        ("Estimated Files Remaining", _format_number(summary.after_remove_estimate)),
+    ]
+
+
+def _compact_name(path_value: str) -> str:
+    if path_value == "-":
+        return path_value
+    return Path(path_value).name or path_value
+
+
+def _format_command_shell(command: list[str]) -> str:
+    if not command:
+        return ""
+    if len(command) == 1:
+        return command[0]
+
+    executable = Path(command[0]).name or command[0]
+    prefix = f"{executable} {command[1]}"
+    parts = command[2:]
+    if not parts:
+        return prefix
+
+    grouped: list[str] = []
+    index = 0
+    while index < len(parts):
+        token = parts[index]
+        if token.startswith("-") and index + 1 < len(parts) and not parts[index + 1].startswith("-"):
+            grouped.append(f"{token} {parts[index + 1]}")
+            index += 2
+        else:
+            grouped.append(token)
+            index += 1
+
+    lines = [f"{prefix} \\"]
+    for offset, token in enumerate(grouped):
+        suffix = " \\" if offset < len(grouped) - 1 else ""
+        lines.append(f"  {token}{suffix}")
+    return "\n".join(lines)
+
+
+def _preview_layout(width: int) -> Literal["wide", "medium", "narrow"]:
+    if width < 86:
+        return "narrow"
+    if width < 120:
+        return "medium"
+    return "wide"
 
 
 class Renderer:
@@ -55,52 +110,48 @@ class Renderer:
         media_targets: list[MediaType],
     ) -> None:
         table = Table.grid(expand=True, padding=(0, 1))
-        table.add_column(justify="right", style="bold cyan", no_wrap=True)
+        table.add_column(style="bold cyan", no_wrap=True)
         table.add_column(style="white")
-        table.add_row("mode", _mode_label(mode))
-        table.add_row("target_dir", str(target_dir))
-        table.add_row("out_dir", str(out_dir))
-        table.add_row("timestamp", timestamp)
-        table.add_row("media", ", ".join(media_targets))
-        self.console.print(Panel(table, title="czk run", border_style="cyan"))
+        table.add_row("Run Mode", _mode_label(mode))
+        table.add_row("Target Folder", str(target_dir))
+        table.add_row("Reports Folder", str(out_dir))
+        table.add_row("Run Timestamp", timestamp)
+        table.add_row("Media Types", ", ".join(media_targets))
+        self.console.print(Panel(table, title="Run Overview", border_style="cyan"))
+        self.console.print("[dim]Full report paths are shown above; preview rows use compact names.[/dim]")
 
-    def render_media_header(self, *, media: MediaType, mode: Mode, command: str) -> None:
+    def render_media_header(self, *, media: MediaType, mode: Mode, command: list[str]) -> None:
         mode_style = "yellow" if mode == "test" else "magenta"
-        title = f"{media.upper()} - {_mode_label(mode)}"
+        title = f"{media.upper()} | {_mode_label(mode)}"
 
         table = Table.grid(expand=True, padding=(0, 1))
-        table.add_column(justify="right", style="bold cyan", no_wrap=True)
+        table.add_column(style="bold cyan", no_wrap=True)
         table.add_column(style="white")
-        table.add_row("command", command)
+        table.add_row("Command", _format_command_shell(command))
 
         self.console.print()
         self.console.print(Panel(table, title=title, border_style=mode_style))
 
     def render_exit_code(self, exit_code: int) -> None:
         style = "green" if exit_code == 0 else "yellow"
-        table = Table.grid(expand=True)
-        table.add_column(style="bold cyan", no_wrap=True)
-        table.add_column(style=style)
-        table.add_row("czkawka_exit_code", str(exit_code))
-        self.console.print(table)
+        self.console.print(f"Scanner Exit Code: {exit_code}", style=style)
 
-    def render_metrics(self, summary: MediaSummary) -> None:
-        metrics = Table(title="metrics", box=box.SIMPLE, expand=True)
-        metrics.add_column("name", style="bold cyan")
-        metrics.add_column("value", justify="right", style="white")
-        metrics.add_row("total_found", _format_number(summary.total_found))
-        metrics.add_row("duplicate_groups", _format_number(summary.duplicate_groups))
-        metrics.add_row("duplicates_to_remove", _format_number(summary.duplicates_to_remove))
-        metrics.add_row("after_remove_estimate", _format_number(summary.after_remove_estimate))
-        self.console.print(metrics)
+    def render_summary(self, summary: MediaSummary) -> None:
+        summary_table = Table(title="Summary", box=box.ROUNDED, expand=True)
+        summary_table.add_column("Field", style="bold cyan")
+        summary_table.add_column("Value", style="white")
+        for label, value in _friendly_summary_rows(summary):
+            summary_table.add_row(label, value)
+        self.console.print(summary_table)
 
     def render_artifacts(self, *, json_path: Path, csv_path: Path) -> None:
-        artifacts = Table(title="artifacts", box=box.SIMPLE, expand=True)
-        artifacts.add_column("type", style="bold cyan", no_wrap=True)
-        artifacts.add_column("path", style="white")
-        artifacts.add_row("json", str(json_path))
-        artifacts.add_row("csv", str(csv_path))
+        artifacts = Table(title="Report Files", box=box.ROUNDED, expand=True)
+        artifacts.add_column("Type", style="bold cyan", no_wrap=True)
+        artifacts.add_column("Path", style="white")
+        artifacts.add_row("JSON Report", str(json_path))
+        artifacts.add_row("CSV Report", str(csv_path))
         self.console.print(artifacts)
+        self.console.print("[dim]Full details are saved in CSV/JSON.[/dim]")
 
     def render_preview_table(
         self,
@@ -109,40 +160,52 @@ class Renderer:
         shown_rows: int,
         total_rows: int,
     ) -> None:
-        subtitle = f"table_rows_shown: {shown_rows}/{total_rows}"
+        subtitle = f"Showing {shown_rows} of {total_rows} duplicate groups"
         self.console.print(subtitle, style="bold cyan")
 
         if not preview_rows:
             self.console.print("(no duplicate rows)")
             return
 
-        table = Table(title="duplicate preview", box=box.SIMPLE_HEAVY, expand=True)
-        table.add_column("#", justify="right", style="bold")
-        table.add_column("file_to_keep", style="white")
-        table.add_column("remove_count", justify="right", style="yellow")
-        table.add_column("first_remove", style="white")
+        layout = _preview_layout(self.console.size.width)
+        if layout == "narrow":
+            self._render_preview_list(preview_rows)
+            return
+
+        include_first_remove = layout == "wide"
+        table = Table(title="Duplicate Preview", box=box.ROUNDED, expand=True)
+        table.add_column("#", style="bold cyan", no_wrap=True)
+        table.add_column("file_to_keep", style="white", overflow="fold")
+        table.add_column("remove_count", style="yellow", no_wrap=True)
+        if include_first_remove:
+            table.add_column("first_remove", style="white", overflow="fold")
 
         for row in preview_rows:
-            table.add_row(
+            rendered = [
                 str(row.index),
-                row.file_to_keep,
+                _compact_name(row.file_to_keep),
                 str(row.remove_count),
-                row.first_remove,
-            )
+            ]
+            if include_first_remove:
+                rendered.append(_compact_name(row.first_remove))
+            table.add_row(*rendered)
 
         self.console.print(table)
+        self.console.print("[dim]Review preview rows before execute mode.[/dim]")
 
-    def render_combined_summary(self, summary: MediaSummary) -> None:
-        table = Table.grid(expand=True, padding=(0, 1))
-        table.add_column(justify="right", style="bold cyan", no_wrap=True)
-        table.add_column(style="white")
-        table.add_row("total_found", _format_number(summary.total_found))
-        table.add_row("duplicate_groups", _format_number(summary.duplicate_groups))
-        table.add_row("duplicates_to_remove", _format_number(summary.duplicates_to_remove))
-        table.add_row("after_remove_estimate", _format_number(summary.after_remove_estimate))
-        self.console.print()
-        self.console.print(Panel(table, title="combined summary", border_style="green"))
+    def _render_preview_list(self, preview_rows: list[DuplicatePreviewRow]) -> None:
+        self.console.print(Panel("Duplicate Preview", border_style="cyan"))
+        for row in preview_rows:
+            table = Table.grid(expand=True, padding=(0, 1))
+            table.add_column(style="bold cyan", no_wrap=True)
+            table.add_column(style="white")
+            table.add_row("Group", str(row.index))
+            table.add_row("Keep", _compact_name(row.file_to_keep))
+            table.add_row("Remove Count", str(row.remove_count))
+            table.add_row("First Remove", _compact_name(row.first_remove))
+            self.console.print(Panel(table, box=box.ROUNDED))
+        self.console.print("[dim]Review preview rows before execute mode.[/dim]")
 
     def render_error(self, message: str, details: str | None = None) -> None:
         body = message if not details else f"{message}\n\n{details}"
-        self.console.print(Panel(body, title="error", border_style="red"))
+        self.console.print(Panel(body, title="Error", border_style="red"))

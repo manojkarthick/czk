@@ -75,7 +75,7 @@ CSV columns:
 
 ### Reported metrics
 
-Per media type and combined summary:
+Per media section:
 
 - `total_found`
 - `duplicate_groups`
@@ -89,10 +89,12 @@ Each run prints grouped sections in this order:
 1. Run header (`mode`, `target_dir`, `out_dir`, `timestamp`, `media`)
 2. Per-media section (`images`, `videos`):
    - command + exit code
-   - metrics table
+   - summary table (human-readable labels)
    - artifact paths
-   - duplicate preview table (`#`, `file_to_keep`, `remove_count`, `first_remove`)
-3. Combined summary
+   - duplicate preview:
+     - wide terminals: `#`, `file_to_keep`, `remove_count`, `first_remove`
+     - medium terminals: `#`, `file_to_keep`, `remove_count`
+     - narrow terminals: bordered list-style groups
 
 ## check_codecs.sh
 
