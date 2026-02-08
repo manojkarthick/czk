@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This repository contains local CLI tools for media/file workflows:
+This repository is dedicated to the `czk` CLI only.
 
 - A Python CLI (`czk`) that wraps `czkawka_cli` for image/video duplicate workflows with CSV/JSON reports.
 
@@ -14,8 +14,7 @@ Primary goal: safe, observable file operations with readable output and reproduc
 - Python packaging/runtime: `uv` + Python 3.11+.
 - External binaries used:
   - `czkawka_cli`
-  - `ffprobe`
-  - `rsync`
+  - `duckdb`
 
 ## Python CLI (`czk`) Workflow
 
@@ -29,6 +28,8 @@ Run dry-run analysis:
 
 ```bash
 czk test [directory]
+# alias:
+czk check [directory]
 ```
 
 Run deletion workflow:
@@ -37,12 +38,24 @@ Run deletion workflow:
 czk execute [directory]
 ```
 
+Run analyze workflow (interactive DuckDB shell):
+
+```bash
+czk analyze [directory]
+# alias:
+czk analyse [directory]
+```
+
 Current defaults:
 
 - Runs both images and videos unless overridden.
 - Image options: similarity `High`, hash-size `32`.
 - Video option: tolerance `10`.
 - Output artifacts are timestamped JSON/CSV files.
+- Default reports directory (when `--out-dir` is omitted):
+  - `<system-temp>/czk-reports`
+- `--out-dir` overrides the default reports directory.
+- Analyze mode always runs dry-run scans and opens DuckDB in-memory (`:memory:`).
 
 ## Testing and Validation
 
@@ -63,7 +76,6 @@ czk test /path/to/target --top 10
 - Prefer `test` mode before any `execute` run.
 - Do not assume deletion decisions without reviewing CSV/JSON outputs.
 - Avoid destructive shell operations unless explicitly requested.
-- For sync/transfer tasks, preserve existing safety flags (no overwrite/no delete semantics unless user asks otherwise).
 
 ## Coding and Change Guidance
 
@@ -71,6 +83,7 @@ czk test /path/to/target --top 10
 - For Python code:
   - maintain stdlib-only approach unless dependency is necessary.
   - keep CLI output readable and stable for downstream parsing.
+  - add Google-style docstrings for every new or modified function/method.
 - For report changes:
   - preserve CSV column contract: `index, file_to_keep, files_to_remove, count`.
   - keep artifact naming deterministic and timestamped.
@@ -98,6 +111,25 @@ czk test /path/to/target --top 10
 - Summary value color cues:
   - `Files Marked for Removal` value in red
   - `Estimated Files Remaining` value in green
+
+## Analyze Contract (`czk analyze` / `czk analyse`)
+
+- Analyze mode is non-destructive:
+  - scans run in dry-run mode only
+  - no duplicate deletion is performed
+- DuckDB session defaults:
+  - in-memory DB (`:memory:`)
+  - interactive shell opened after scan/report generation
+- Required loaded tables:
+  - `media_inventory`
+  - media-specific `duplicates_*`, `duplicates_*_json`, and `duplicates_*_expanded`
+    tables are created only for the selected `--media` value
+- Table contracts:
+  - `duplicates_*` keep CSV schema (`index, file_to_keep, files_to_remove, count`)
+  - `duplicates_*_json` columns:
+    `group_index, item_index, path, size_bytes, modified_date, raw_item_json, source_report`
+  - `duplicates_*_expanded` columns:
+    `group_index, file_to_keep, remove_path, remove_ordinal, group_remove_count`
 
 ## Common Tasks for Future Agents
 

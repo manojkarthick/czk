@@ -1,11 +1,14 @@
-# Datahoarding Scripts
+# Czk
 
-CLI utilities in this folder for file analysis, deduplication, syncing, and directory transforms.
+Wrapper around `czkawka_cli` with a focus on usability and easier analysis.
+
+This repository is intentionally scoped to the `czk` CLI only.
 
 ## Requirements
 
 - macOS or Linux shell environment
 - `czkawka_cli` for duplicate detection/removal
+- `duckdb` CLI for `czk analyze` interactive SQL sessions
 - `python` + `uv` for the `czk` wrapper CLI
 
 ## Quick Start
@@ -20,7 +23,12 @@ uv tool install --editable .
 
 ```bash
 czk test [directory]
+# alias:
+czk check [directory]
 czk execute [directory]
+czk analyze [directory]
+# alias:
+czk analyse [directory]
 ```
 
 ## czk (Python CLI Wrapper)
@@ -30,6 +38,7 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
 ### Commands
 
 - `czk test [directory]`
+  - Alias: `czk check [directory]`
   - Dry run (no deletion)
   - Generates JSON + CSV reports
   - Prints counts and a table preview
@@ -39,6 +48,12 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
   - Generates JSON + CSV reports
   - Prints counts and a table preview
 
+- `czk analyze [directory]` (alias: `czk analyse [directory]`)
+  - Runs dry-run scans (no deletion) for selected media
+  - Generates JSON + CSV reports
+  - Loads reports + media inventory into an in-memory DuckDB session
+  - Opens interactive DuckDB shell for arbitrary SQL queries
+
 ### Default behavior
 
 - Scans both images and videos (`--media both`)
@@ -47,7 +62,9 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
   - `--hash-size 32`
 - Video mode uses:
   - `--video-tolerance 10`
-- Writes timestamped artifacts in current working directory (or `--out-dir`)
+- Writes timestamped artifacts in shared temp folder by default:
+  - `<system-temp>/czk-reports`
+- `--out-dir` overrides the default output location
 
 ### Useful options
 
@@ -56,7 +73,7 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
 - `--image-similarity {Minimal,VeryLow,Low,Medium,High,VeryHigh,None}`
 - `--video-tolerance 0..20`
 - `--top N` (table rows to print; default 50)
-- `--out-dir <path>`
+- `--out-dir <path>` (override default shared temp reports folder)
 - `--no-color` (force plain output; default is auto-color on TTY)
 
 ### Output files
@@ -65,6 +82,10 @@ Per media type, per run:
 
 - JSON: `<base-folder>-<media>-<YYYYMMDD-HHMMSS>.json`
 - CSV: `<base-folder>-<media>-<YYYYMMDD-HHMMSS>.csv`
+
+Default location when `--out-dir` is omitted:
+
+- `<system-temp>/czk-reports`
 
 CSV columns:
 
@@ -101,112 +122,34 @@ Command display notes:
 - Command output is intentionally compact and readable (representation, not exact shell replay).
 - Long path values are shortened to placeholders such as `<target-folder>` and `<json-report>`.
 
-## check_codecs.sh
+### Analyze mode: DuckDB tables
 
-Scans video files in a directory, detects codecs with `ffprobe`, and prints summary counts by extension and codec.
+`czk analyze`/`czk analyse` preloads these tables before opening shell.
+Media tables are created only for the selected media (`--media`):
 
-Usage:
+- `media_inventory`
+  - `media_type`, `path`, `file_name`, `extension`, `size_bytes`, `modified_epoch`
+- `duplicates_images`, `duplicates_videos`
+  - `index`, `file_to_keep`, `files_to_remove`, `count`
+- `duplicates_images_json`, `duplicates_videos_json`
+  - JSON-derived rows with columns:
+    `group_index`, `item_index`, `path`, `size_bytes`, `modified_date`, `raw_item_json`, `source_report`
+- `duplicates_images_expanded`, `duplicates_videos_expanded`
+  - `group_index`, `file_to_keep`, `remove_path`, `remove_ordinal`, `group_remove_count`
 
-```bash
-./check_codecs.sh [options] [target_dir]
+Starter queries:
+
+```sql
+SELECT COUNT(*) FROM media_inventory;
+SELECT * FROM duplicates_images LIMIT 10;
+SELECT * FROM duplicates_images_json LIMIT 10;
+SELECT * FROM duplicates_images_expanded LIMIT 10;
 ```
 
-Options:
+## AI Disclosure and Liability
 
-- `-v`, `--verbose`: print per-file details
-- `--no-h264`: print per-file details only for non-H.264 files
-
-Notes:
-
-- Default directory: current directory (`.`)
-- Uses CPU-parallel processing
-
-## deduplicate_collection.sh
-
-Runs image deduplication per immediate subfolder of a collection directory using `czkawka_cli`.
-
-Usage:
-
-```bash
-./deduplicate_collection.sh [collection_dir] [--dry-run]
-```
-
-Behavior:
-
-- Default directory: `./Collection`
-- `--dry-run`: prints duplicate candidates without deleting
-- Normal mode: deletes duplicates using `AEO` (keep oldest)
-
-## diagnose_inflation.sh
-
-Diagnoses rsync size inflation risks from hard links and sparse files.
-
-Usage:
-
-```bash
-./diagnose_inflation.sh <directory>
-```
-
-It reports:
-
-- Actual disk usage (`du -sh`)
-- Hard-link-expanded usage (`du -slh`) -> indicates when `rsync -H` is needed
-- Apparent size (`du --apparent-size`) -> indicates when `rsync -S` is needed
-
-## flatten.sh
-
-Moves all files from a source directory tree into one target directory, with collision-safe renaming.
-
-Usage:
-
-```bash
-./flatten.sh <source_directory> <target_directory>
-```
-
-Behavior:
-
-- Creates target directory if missing
-- Moves files (does not copy)
-- On collisions, appends counter suffixes: `file.txt`, `file_1.txt`, `file_2.txt`, ...
-
-## safe_sync.sh
-
-Safe `rsync` wrapper to copy from source to target without deleting or overwriting existing target files.
-
-Usage:
-
-```bash
-./safe_sync.sh <source_directory> <target_directory>
-```
-
-Behavior:
-
-- Uses: `-a -h -H -S --partial --ignore-existing --stats`
-- Uses modern progress (`--info=progress2`) when supported, else legacy `--progress`
-- Guards against recursive sync if target is inside source
-
-## test_harness.sh
-
-Creates a temporary test environment and validates `safe_sync.sh` behavior.
-
-Usage:
-
-```bash
-./test_harness.sh
-```
-
-Validates:
-
-- basic copy
-- nested copy
-- filenames with spaces
-- no overwrite of existing target files
-- no deletion of extra target files
-
-## Development
-
-Run tests for the Python CLI:
-
-```bash
-uv run python -m unittest discover -s tests -v
-```
+- Parts of this project were generated or assisted by AI tooling.
+- You are responsible for reviewing and validating all commands before running them, especially deletion workflows.
+- This software is provided "as is", without warranties of any kind.
+- By using this project, you accept full responsibility for any outcomes, including data loss.
+- The authors/maintainers are not liable for any direct or indirect damages resulting from use of this project.

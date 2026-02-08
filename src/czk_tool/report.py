@@ -36,6 +36,17 @@ class MediaSummary:
 
 
 def load_duplicate_groups(pretty_json_path: Path) -> list[list[dict[str, Any]]]:
+    """Load and validate duplicate groups from a Czkawka pretty JSON report.
+
+    Args:
+        pretty_json_path: Path to the report JSON file.
+
+    Returns:
+        List of duplicate groups where each group is a list of item dicts.
+
+    Raises:
+        ValueError: If the JSON is malformed or does not match expected shape.
+    """
     try:
         raw_data = json.loads(pretty_json_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -65,6 +76,17 @@ def load_duplicate_groups(pretty_json_path: Path) -> list[list[dict[str, Any]]]:
 
 
 def _path_value(item: dict[str, Any]) -> str:
+    """Extract and validate the `path` value from an item payload.
+
+    Args:
+        item: Duplicate item payload.
+
+    Returns:
+        Non-empty file path string.
+
+    Raises:
+        ValueError: If `path` is missing or invalid.
+    """
     path = item.get("path")
     if not isinstance(path, str) or not path:
         raise ValueError("Each duplicate record must include a non-empty string 'path'.")
@@ -72,6 +94,14 @@ def _path_value(item: dict[str, Any]) -> str:
 
 
 def _size_value(item: dict[str, Any]) -> int:
+    """Extract file size as an integer with safe fallback.
+
+    Args:
+        item: Duplicate item payload.
+
+    Returns:
+        Integer size value, or `0` when missing/invalid.
+    """
     size = item.get("size")
     if isinstance(size, int):
         return size
@@ -81,6 +111,14 @@ def _size_value(item: dict[str, Any]) -> int:
 
 
 def _modified_date_value(item: dict[str, Any]) -> int:
+    """Extract modified-date epoch as an integer with safe fallback.
+
+    Args:
+        item: Duplicate item payload.
+
+    Returns:
+        Integer epoch value, or `0` when missing/invalid.
+    """
     modified_date = item.get("modified_date")
     if isinstance(modified_date, int):
         return modified_date
@@ -90,6 +128,14 @@ def _modified_date_value(item: dict[str, Any]) -> int:
 
 
 def _project_group_aeb(group: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    """Project keep/remove decisions using AEB-style ordering rules.
+
+    Args:
+        group: Duplicate group payload.
+
+    Returns:
+        Tuple of `(file_to_keep, files_to_remove)`.
+    """
     ordered = sorted(
         group,
         key=lambda item: (
@@ -104,6 +150,14 @@ def _project_group_aeb(group: list[dict[str, Any]]) -> tuple[str, list[str]]:
 
 
 def _exists(path: str) -> bool:
+    """Check whether a filesystem path currently exists.
+
+    Args:
+        path: Filesystem path string.
+
+    Returns:
+        `True` when the path exists, else `False`.
+    """
     try:
         return Path(path).exists()
     except OSError:
@@ -111,6 +165,14 @@ def _exists(path: str) -> bool:
 
 
 def _resolve_execute_group(group: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    """Resolve keep/remove files for execute mode with filesystem reconciliation.
+
+    Args:
+        group: Duplicate group payload.
+
+    Returns:
+        Tuple of `(file_to_keep, files_to_remove)`.
+    """
     projected_keep, projected_remove = _project_group_aeb(group)
     all_paths = [_path_value(item) for item in group]
     existing = [path for path in all_paths if _exists(path)]
@@ -125,6 +187,15 @@ def _resolve_execute_group(group: list[dict[str, Any]]) -> tuple[str, list[str]]
 
 
 def build_rows(groups: list[list[dict[str, Any]]], mode: Mode) -> list[DuplicateRow]:
+    """Build normalized, sorted duplicate rows from grouped report payload.
+
+    Args:
+        groups: Duplicate groups from JSON report.
+        mode: Processing mode (`test` or `execute`).
+
+    Returns:
+        Sorted duplicate rows with reassigned 1-based index values.
+    """
     rows: list[DuplicateRow] = []
     for group in groups:
         if not group:
@@ -155,6 +226,12 @@ def build_rows(groups: list[list[dict[str, Any]]], mode: Mode) -> list[Duplicate
 
 
 def write_csv(rows: list[DuplicateRow], csv_path: Path) -> None:
+    """Write duplicate rows to the canonical CSV schema.
+
+    Args:
+        rows: Duplicate rows to persist.
+        csv_path: Destination CSV path.
+    """
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=CSV_COLUMNS)
         writer.writeheader()
@@ -170,6 +247,14 @@ def write_csv(rows: list[DuplicateRow], csv_path: Path) -> None:
 
 
 def preview_row_from_duplicate_row(row: DuplicateRow) -> DuplicatePreviewRow:
+    """Convert a duplicate row into compact preview shape.
+
+    Args:
+        row: Full duplicate row.
+
+    Returns:
+        Preview row with remove count and first-remove field.
+    """
     first_remove = row.files_to_remove[0] if row.files_to_remove else "-"
     return DuplicatePreviewRow(
         index=row.index,
@@ -180,6 +265,16 @@ def preview_row_from_duplicate_row(row: DuplicateRow) -> DuplicatePreviewRow:
 
 
 def build_summary(total_found: int, duplicate_groups: int, rows: list[DuplicateRow]) -> MediaSummary:
+    """Compute per-media summary metrics from counted files and duplicate rows.
+
+    Args:
+        total_found: Total scanned media files.
+        duplicate_groups: Number of duplicate groups detected.
+        rows: Duplicate rows used to derive removal counts.
+
+    Returns:
+        Summary metrics for reporting.
+    """
     duplicates_to_remove = sum(row.count for row in rows)
     after_remove_estimate = max(0, total_found - duplicates_to_remove)
     return MediaSummary(
@@ -191,12 +286,29 @@ def build_summary(total_found: int, duplicate_groups: int, rows: list[DuplicateR
 
 
 def _read_csv_rows(csv_path: Path) -> list[dict[str, str]]:
+    """Read CSV rows as dictionaries.
+
+    Args:
+        csv_path: CSV file path.
+
+    Returns:
+        List of row dictionaries keyed by header.
+    """
     with csv_path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle)
         return list(reader)
 
 
 def _parse_int(value: str, default: int) -> int:
+    """Parse integer text with fallback.
+
+    Args:
+        value: Raw numeric string.
+        default: Fallback value when parsing fails.
+
+    Returns:
+        Parsed integer or fallback.
+    """
     try:
         return int(value)
     except (TypeError, ValueError):
@@ -204,6 +316,14 @@ def _parse_int(value: str, default: int) -> int:
 
 
 def _parse_remove_list(raw_value: str) -> list[str]:
+    """Parse JSON remove-list column text.
+
+    Args:
+        raw_value: JSON string representation of remove paths.
+
+    Returns:
+        List of remove paths, or empty list when invalid.
+    """
     try:
         value = json.loads(raw_value)
     except json.JSONDecodeError:
@@ -217,6 +337,15 @@ def build_preview_rows_from_csv(
     csv_path: Path,
     top: int,
 ) -> tuple[list[DuplicatePreviewRow], int, int]:
+    """Build preview rows by re-reading the persisted CSV output.
+
+    Args:
+        csv_path: Path to duplicate CSV file.
+        top: Maximum rows to include in preview.
+
+    Returns:
+        Tuple of `(preview_rows, total_rows, shown_rows)`.
+    """
     rows = _read_csv_rows(csv_path)
     total_rows = len(rows)
     shown_rows = rows[: max(0, top)]
@@ -237,6 +366,15 @@ def build_preview_rows_from_csv(
 
 
 def _clip(value: str, width: int) -> str:
+    """Clip long text values to a fixed width with ellipsis.
+
+    Args:
+        value: Text to clip.
+        width: Maximum output width.
+
+    Returns:
+        Clipped string fitting within `width`.
+    """
     if len(value) <= width:
         return value
     if width <= 3:
@@ -245,6 +383,15 @@ def _clip(value: str, width: int) -> str:
 
 
 def build_pretty_table_from_csv(csv_path: Path, top: int) -> tuple[str, int, int]:
+    """Build plain-text pretty table output from duplicate CSV data.
+
+    Args:
+        csv_path: Path to duplicate CSV file.
+        top: Maximum rows to include in the table body.
+
+    Returns:
+        Tuple of `(table_text, total_rows, shown_rows)`.
+    """
     rows = _read_csv_rows(csv_path)
     normalized_rows: list[dict[str, str]] = []
     for row in rows:
@@ -274,6 +421,7 @@ def build_pretty_table_from_csv(csv_path: Path, top: int) -> tuple[str, int, int
         widths["count"] = max(widths["count"], min(10, len(row["count"])))
 
     def format_row(values: dict[str, str]) -> str:
+        """Format one table row with width-aware clipping."""
         return (
             f"{_clip(values['index'], widths['index']):<{widths['index']}} | "
             f"{_clip(values['file_to_keep'], widths['file_to_keep']):<{widths['file_to_keep']}} | "

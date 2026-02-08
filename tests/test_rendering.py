@@ -155,6 +155,35 @@ class RenderingTests(unittest.TestCase):
         self.assertIn("Run failed", output)
         self.assertNotIn("\x1b[", output)
 
+    def test_duckdb_intro_respects_media_selection(self) -> None:
+        images_buffer = io.StringIO()
+        images_renderer = Renderer(
+            RenderConfig(no_color=True, stdout_is_tty=False, terminal_width=120),
+            file=images_buffer,
+        )
+        images_renderer.render_duckdb_intro(["images"])
+        images_output = images_buffer.getvalue()
+        self.assertIn("duplicates_images", images_output)
+        self.assertIn("duplicates_images_json", images_output)
+        self.assertIn("duplicates_images_expanded", images_output)
+        self.assertNotIn("duplicates_videos", images_output)
+        self.assertNotIn("duplicates_videos_json", images_output)
+        self.assertNotIn("duplicates_videos_expanded", images_output)
+
+        videos_buffer = io.StringIO()
+        videos_renderer = Renderer(
+            RenderConfig(no_color=True, stdout_is_tty=False, terminal_width=120),
+            file=videos_buffer,
+        )
+        videos_renderer.render_duckdb_intro(["videos"])
+        videos_output = videos_buffer.getvalue()
+        self.assertIn("duplicates_videos", videos_output)
+        self.assertIn("duplicates_videos_json", videos_output)
+        self.assertIn("duplicates_videos_expanded", videos_output)
+        self.assertNotIn("duplicates_images", videos_output)
+        self.assertNotIn("duplicates_images_json", videos_output)
+        self.assertNotIn("duplicates_images_expanded", videos_output)
+
 
 if __name__ == "__main__":
     unittest.main()
