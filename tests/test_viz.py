@@ -114,25 +114,42 @@ class VizReportTests(unittest.TestCase):
         self.assertIn("Reports Folder", html_report)
         self.assertIn("Run Timestamp", html_report)
         self.assertIn("Media Types", html_report)
-        self.assertIn("IMAGES | DRY RUN", html_report)
-        self.assertIn("VIDEOS | DRY RUN", html_report)
+        self.assertEqual(html_report.count("<h2>Overview</h2>"), 2)
         self.assertIn('<body data-theme="dark">', html_report)
         self.assertIn('id="theme-toggle"', html_report)
         self.assertIn("Light mode", html_report)
         self.assertIn("function czkToggleTheme()", html_report)
-        self.assertIn("function czkFilterCards(sectionId, inputId)", html_report)
-        self.assertIn("function czkClearCardSearch(sectionId, inputId)", html_report)
+        self.assertIn("function czkApplyCardView(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId, pageDelta)", html_report)
+        self.assertIn("function czkFilterCards(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId)", html_report)
+        self.assertIn("function czkChangePage(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId, pageDelta)", html_report)
+        self.assertIn("function czkJumpPage(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId, target)", html_report)
+        self.assertIn("function czkClearCardSearch(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId)", html_report)
         self.assertIn("function czkOpenBackground(event)", html_report)
         self.assertIn("Scanner Exit Code: 0", html_report)
+        self.assertIn('class="results-section"', html_report)
+        self.assertIn("<h2>Results</h2>", html_report)
+        self.assertIn("Showing 1 of 1 duplicate groups", html_report)
         self.assertIn("Search filenames", html_report)
         self.assertIn("Partial match across keep and remove files", html_report)
-        self.assertIn("czkFilterCards('dup-cards-images-1', 'dup-cards-images-1-search')", html_report)
-        self.assertIn("czkFilterCards('dup-cards-videos-2', 'dup-cards-videos-2-search')", html_report)
-        self.assertIn("czkClearCardSearch('dup-cards-images-1', 'dup-cards-images-1-search')", html_report)
+        self.assertIn("Items per page", html_report)
+        self.assertIn('option value="25" selected', html_report)
+        self.assertIn('option value="50">50</option>', html_report)
+        self.assertIn('option value="100">100</option>', html_report)
+        self.assertIn(">First</button>", html_report)
+        self.assertIn(">Previous</button>", html_report)
+        self.assertIn(">Next</button>", html_report)
+        self.assertIn(">Last</button>", html_report)
+        self.assertIn("Page 1 of 1", html_report)
+        self.assertIn("czkFilterCards('dup-cards-images-1', 'dup-cards-images-1-search', 'dup-cards-images-1-page-size', 'dup-cards-images-1-page-status', 'dup-cards-images-1-page-first', 'dup-cards-images-1-page-prev', 'dup-cards-images-1-page-next', 'dup-cards-images-1-page-last')", html_report)
+        self.assertIn("czkFilterCards('dup-cards-videos-2', 'dup-cards-videos-2-search', 'dup-cards-videos-2-page-size', 'dup-cards-videos-2-page-status', 'dup-cards-videos-2-page-first', 'dup-cards-videos-2-page-prev', 'dup-cards-videos-2-page-next', 'dup-cards-videos-2-page-last')", html_report)
+        self.assertIn("czkClearCardSearch('dup-cards-images-1', 'dup-cards-images-1-search', 'dup-cards-images-1-page-size', 'dup-cards-images-1-page-status', 'dup-cards-images-1-page-first', 'dup-cards-images-1-page-prev', 'dup-cards-images-1-page-next', 'dup-cards-images-1-page-last')", html_report)
+        self.assertIn("czkChangePage('dup-cards-images-1', 'dup-cards-images-1-search', 'dup-cards-images-1-page-size', 'dup-cards-images-1-page-status', 'dup-cards-images-1-page-first', 'dup-cards-images-1-page-prev', 'dup-cards-images-1-page-next', 'dup-cards-images-1-page-last', -1)", html_report)
+        self.assertIn("czkJumpPage('dup-cards-images-1', 'dup-cards-images-1-search', 'dup-cards-images-1-page-size', 'dup-cards-images-1-page-status', 'dup-cards-images-1-page-first', 'dup-cards-images-1-page-prev', 'dup-cards-images-1-page-next', 'dup-cards-images-1-page-last', 'first')", html_report)
+        self.assertIn("czkJumpPage('dup-cards-images-1', 'dup-cards-images-1-search', 'dup-cards-images-1-page-size', 'dup-cards-images-1-page-status', 'dup-cards-images-1-page-first', 'dup-cards-images-1-page-prev', 'dup-cards-images-1-page-next', 'dup-cards-images-1-page-last', 'last')", html_report)
         self.assertIn("Show all", html_report)
         self.assertIn("Collapse all", html_report)
         self.assertIn("Group:</strong>", html_report)
-        self.assertIn("Keep File", html_report)
+        self.assertIn("File to Keep", html_report)
         self.assertIn("Files to Remove", html_report)
         self.assertIn("Marked for Removal", html_report)
         self.assertIn('class="dup-card"', html_report)
@@ -142,6 +159,7 @@ class VizReportTests(unittest.TestCase):
         self.assertNotIn("remove_count", html_report)
         self.assertNotIn('class="dup-card" open', html_report)
         self.assertIn("querySelectorAll('.dup-card')", html_report)
+        self.assertIn('class="dup-cards" data-page="1"', html_report)
         self.assertIn('data-search="keep-image.jpg remove-image.jpg"', html_report)
         self.assertIn("<img ", html_report)
         self.assertIn("<video controls preload=\"metadata\" muted>", html_report)
@@ -230,6 +248,54 @@ class VizReportTests(unittest.TestCase):
         self.assertIn("Resolution:</strong> 1920x1080", report)
         self.assertNotIn('class="media-path"', report)
         self.assertIn(str(csv_path), report)
+
+    def test_build_html_report_paginates_cards_with_default_25(self) -> None:
+        visual_rows = [
+            DuplicateVisualRow(
+                index=index,
+                file_to_keep=f"/tmp/item-{index}.jpg",
+                files_to_remove=[f"/tmp/item-{index}-dup.jpg"],
+                remove_count=1,
+            )
+            for index in range(1, 31)
+        ]
+        report = build_html_report(
+            run_context=VizRunContext(
+                run_mode="VIZ (DRY RUN)",
+                target_dir=Path("/tmp"),
+                out_dir=Path("/tmp"),
+                timestamp="20260209-090900",
+                media_targets=["images"],
+            ),
+            media_sections=[
+                VizMediaSection(
+                    media="images",
+                    command_preview="czkawka_cli image --dry-run",
+                    exit_code=0,
+                    summary=MediaSummary(
+                        total_found=30,
+                        duplicate_groups=30,
+                        duplicates_to_remove=30,
+                        after_remove_estimate=0,
+                    ),
+                    json_path=Path("/tmp/images.json"),
+                    csv_path=Path("/tmp/images.csv"),
+                    visual_rows=visual_rows,
+                    shown_rows=30,
+                    total_rows=30,
+                    metadata_by_path={},
+                )
+            ],
+        )
+
+        self.assertIn("Page 1 of 2", report)
+        self.assertIn('data-group-index="26" data-search="item-26.jpg item-26-dup.jpg" hidden', report)
+        self.assertIn(">First</button>", report)
+        self.assertIn(">Last</button>", report)
+        self.assertNotIn(
+            'id="dup-cards-images-1-page-next" class="control-btn" onclick="czkChangePage(\'dup-cards-images-1\', \'dup-cards-images-1-search\', \'dup-cards-images-1-page-size\', \'dup-cards-images-1-page-status\', \'dup-cards-images-1-page-first\', \'dup-cards-images-1-page-prev\', \'dup-cards-images-1-page-next\', \'dup-cards-images-1-page-last\', 1)" disabled>Next</button>',
+            report,
+        )
 
     def test_build_html_report_omits_item_actions_when_path_is_blank(self) -> None:
         report = build_html_report(

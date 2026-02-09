@@ -97,9 +97,9 @@ czk test /path/to/target --top 10
   - wide: `index`, `file_to_keep`, `remove_count`, `first_remove`
   - medium: `index`, `file_to_keep`, `remove_count`
   - narrow: bordered list-style preview blocks
-- Keep command block compact and readable:
-  - multiline shell-style formatting with `\`
-  - shorten long path arguments with placeholders (for example `<target-folder>`, `<json-report>`)
+- Keep command block copy-pasteable and accurate:
+  - show the full command with real arguments as executed
+  - preserve shell-safe quoting for paths/values when needed
 - Keep CSV schema stable:
   - `index, file_to_keep, files_to_remove, count`
 - Color behavior:

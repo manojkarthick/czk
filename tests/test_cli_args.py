@@ -26,6 +26,7 @@ class CliArgTests(unittest.TestCase):
         self.assertEqual(args.image_similarity, "High")
         self.assertEqual(args.video_tolerance, 10)
         self.assertEqual(args.top, 50)
+        self.assertFalse(args.show_all)
         self.assertIsNone(args.out_dir)
         self.assertFalse(args.no_color)
 
@@ -49,6 +50,7 @@ class CliArgTests(unittest.TestCase):
         self.assertEqual(args.media, "videos")
         self.assertEqual(args.video_tolerance, 20)
         self.assertEqual(args.top, 7)
+        self.assertFalse(args.show_all)
         self.assertEqual(args.out_dir, "/tmp/out")
 
     def test_check_alias_resolves_to_test(self) -> None:
@@ -64,6 +66,7 @@ class CliArgTests(unittest.TestCase):
         self.assertEqual(args.hash_alg, "Gradient")
         self.assertEqual(args.image_filter, "Nearest")
         self.assertEqual(args.video_tolerance, 10)
+        self.assertFalse(args.show_all)
         self.assertIsNone(args.out_dir)
         self.assertFalse(args.no_color)
 
@@ -82,8 +85,14 @@ class CliArgTests(unittest.TestCase):
         self.assertEqual(args.image_similarity, "High")
         self.assertEqual(args.video_tolerance, 10)
         self.assertEqual(args.top, 50)
+        self.assertFalse(args.show_all)
         self.assertIsNone(args.out_dir)
         self.assertFalse(args.no_color)
+
+    def test_all_flag_enables_show_all(self) -> None:
+        args = parse_args(["test", "--all", "--top", "7"])
+        self.assertTrue(args.show_all)
+        self.assertEqual(args.top, 7)
 
     def test_analyze_accepts_shared_flags(self) -> None:
         args = parse_args(
@@ -151,6 +160,7 @@ class CliArgTests(unittest.TestCase):
             self.assertEqual(run_media_mock.call_args.kwargs["mode"], "analyze")
             self.assertEqual(run_media_mock.call_args.kwargs["hash_alg"], "Gradient")
             self.assertEqual(run_media_mock.call_args.kwargs["image_filter"], "Nearest")
+            self.assertEqual(run_media_mock.call_args.kwargs["top"], 50)
             self.assertEqual(build_expanded_mock.call_count, 1)
             launch_mock.assert_called_once()
             self.assertIn("duplicate_json_paths", launch_mock.call_args.kwargs)
@@ -182,7 +192,7 @@ class CliArgTests(unittest.TestCase):
             ),
         ) as scan_mock, patch.object(
             cli, "build_visual_rows_from_csv", return_value=([], 0, 0)
-        ), patch.object(
+        ) as build_visual_mock, patch.object(
             cli, "load_duplicate_groups", return_value=[]
         ), patch.object(
             cli, "build_html_report", return_value="<html><body>report</body></html>"
@@ -191,12 +201,15 @@ class CliArgTests(unittest.TestCase):
         ) as browser_open_mock, patch.object(
             cli.Renderer, "render_run_header"
         ) as run_header_mock:
-            exit_code = cli.main(["viz", ".", "--media", "images", "--out-dir", tmp_dir, "--no-color"])
+            exit_code = cli.main(
+                ["viz", ".", "--media", "images", "--top", "1", "--all", "--out-dir", tmp_dir, "--no-color"]
+            )
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(scan_mock.call_count, 1)
             self.assertEqual(scan_mock.call_args.kwargs["hash_alg"], "Gradient")
             self.assertEqual(scan_mock.call_args.kwargs["image_filter"], "Nearest")
+            self.assertEqual(build_visual_mock.call_args.kwargs["top"], sys.maxsize)
             browser_open_mock.assert_called_once()
             run_header_mock.assert_not_called()
 
@@ -236,6 +249,16 @@ class CliArgTests(unittest.TestCase):
             )
             self.assertEqual(exit_code, 0)
             self.assertEqual(run_media_mock.call_args.kwargs["out_dir"], Path("/tmp/custom").resolve())
+
+    def test_main_all_overrides_top_for_terminal_preview(self) -> None:
+        with patch.object(cli, "ensure_czkawka_cli", return_value="/opt/homebrew/bin/czkawka_cli"), patch.object(
+            cli, "_run_one_media", return_value=(Path("/tmp/a.json"), Path("/tmp/a.csv"))
+        ) as run_media_mock, patch.object(cli.Renderer, "render_run_header"):
+            exit_code = cli.main(
+                ["test", ".", "--media", "images", "--top", "5", "--all", "--no-color"]
+            )
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(run_media_mock.call_args.kwargs["top"], sys.maxsize)
 
 
 if __name__ == "__main__":

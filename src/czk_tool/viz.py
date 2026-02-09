@@ -375,8 +375,50 @@ def _render_search_controls(section_dom_id: str, search_input_id: str) -> str:
         f'<label class="search-label" for="{_escape(search_input_id)}">Search filenames</label>'
         f'<input id="{_escape(search_input_id)}" class="search-input" type="search" '
         'placeholder="Partial match across keep and remove files" '
-        f'oninput="czkFilterCards(\'{section_dom_id}\', \'{search_input_id}\')">'
-        f'<button type="button" class="control-btn" onclick="czkClearCardSearch(\'{section_dom_id}\', \'{search_input_id}\')">Clear</button>'
+        f'oninput="czkFilterCards(\'{section_dom_id}\', \'{search_input_id}\', \'{section_dom_id}-page-size\', \'{section_dom_id}-page-status\', \'{section_dom_id}-page-first\', \'{section_dom_id}-page-prev\', \'{section_dom_id}-page-next\', \'{section_dom_id}-page-last\')">'
+        f'<button type="button" class="control-btn" onclick="czkClearCardSearch(\'{section_dom_id}\', \'{search_input_id}\', \'{section_dom_id}-page-size\', \'{section_dom_id}-page-status\', \'{section_dom_id}-page-first\', \'{section_dom_id}-page-prev\', \'{section_dom_id}-page-next\', \'{section_dom_id}-page-last\')">Clear</button>'
+        "</div>"
+    )
+
+
+def _render_pagination_controls(section_dom_id: str, total_cards: int) -> str:
+    """Render pagination controls for one media section.
+
+    Args:
+        section_dom_id: DOM id for the duplicate-card container.
+        total_cards: Number of duplicate-group cards in the section.
+
+    Returns:
+        HTML controls fragment for pagination.
+    """
+    default_page_size = 25
+    total_pages = max(1, (total_cards + default_page_size - 1) // default_page_size)
+    prev_disabled_attr = " disabled"
+    next_disabled_attr = " disabled" if total_pages <= 1 else ""
+    page_size_id = f"{section_dom_id}-page-size"
+    page_status_id = f"{section_dom_id}-page-status"
+    page_first_id = f"{section_dom_id}-page-first"
+    page_prev_id = f"{section_dom_id}-page-prev"
+    page_next_id = f"{section_dom_id}-page-next"
+    page_last_id = f"{section_dom_id}-page-last"
+    return (
+        '<div class="pagination-controls">'
+        f'<label class="search-label" for="{_escape(page_size_id)}">Items per page</label>'
+        f'<select id="{_escape(page_size_id)}" class="page-size-select" '
+        f'onchange="czkFilterCards(\'{section_dom_id}\', \'{section_dom_id}-search\', \'{page_size_id}\', \'{page_status_id}\', \'{page_first_id}\', \'{page_prev_id}\', \'{page_next_id}\', \'{page_last_id}\')">'
+        '<option value="25" selected>25</option>'
+        '<option value="50">50</option>'
+        '<option value="100">100</option>'
+        "</select>"
+        f'<button type="button" id="{_escape(page_first_id)}" class="control-btn" '
+        f'onclick="czkJumpPage(\'{section_dom_id}\', \'{section_dom_id}-search\', \'{page_size_id}\', \'{page_status_id}\', \'{page_first_id}\', \'{page_prev_id}\', \'{page_next_id}\', \'{page_last_id}\', \'first\')"{prev_disabled_attr}>First</button>'
+        f'<button type="button" id="{_escape(page_prev_id)}" class="control-btn" '
+        f'onclick="czkChangePage(\'{section_dom_id}\', \'{section_dom_id}-search\', \'{page_size_id}\', \'{page_status_id}\', \'{page_first_id}\', \'{page_prev_id}\', \'{page_next_id}\', \'{page_last_id}\', -1)"{prev_disabled_attr}>Previous</button>'
+        f'<button type="button" id="{_escape(page_next_id)}" class="control-btn" '
+        f'onclick="czkChangePage(\'{section_dom_id}\', \'{section_dom_id}-search\', \'{page_size_id}\', \'{page_status_id}\', \'{page_first_id}\', \'{page_prev_id}\', \'{page_next_id}\', \'{page_last_id}\', 1)"{next_disabled_attr}>Next</button>'
+        f'<button type="button" id="{_escape(page_last_id)}" class="control-btn" '
+        f'onclick="czkJumpPage(\'{section_dom_id}\', \'{section_dom_id}-search\', \'{page_size_id}\', \'{page_status_id}\', \'{page_first_id}\', \'{page_prev_id}\', \'{page_next_id}\', \'{page_last_id}\', \'last\')"{next_disabled_attr}>Last</button>'
+        f'<span id="{_escape(page_status_id)}" class="page-status">Page 1 of {total_pages}</span>'
         "</div>"
     )
 
@@ -400,7 +442,7 @@ def _render_duplicate_cards(
         HTML content containing all duplicate cards.
     """
     cards: list[str] = []
-    for row in rows:
+    for card_position, row in enumerate(rows, start=1):
         keep_name = _escape(Path(row.file_to_keep).name or row.file_to_keep or "-")
         search_index = _escape(_build_search_index(row))
         keep_html = _render_media_item(
@@ -421,16 +463,17 @@ def _render_duplicate_cards(
             if remove_items
             else '<p class="empty-inline">No files marked for removal.</p>'
         )
+        hidden_attr = " hidden" if card_position > 25 else ""
         cards.append(
-            f'<details class="dup-card" data-search="{search_index}">'
+            f'<details class="dup-card" data-group-index="{row.index}" data-search="{search_index}"{hidden_attr}>'
             '<summary class="dup-card-summary">'
             f'<span class="summary-chip"><strong>Group:</strong> {row.index}</span>'
-            f'<span class="summary-chip"><strong>Keep File:</strong> {keep_name}</span>'
+            f'<span class="summary-chip"><strong>File to Keep:</strong> {keep_name}</span>'
             f'<span class="summary-chip"><strong>Marked for Removal:</strong> {row.remove_count}</span>'
             "</summary>"
             '<div class="dup-card-body">'
             '<div class="dup-card-section">'
-            "<h4>Keep File</h4>"
+            "<h4>File to Keep</h4>"
             f"{keep_html}"
             "</div>"
             '<div class="dup-card-section">'
@@ -441,7 +484,7 @@ def _render_duplicate_cards(
             "</details>"
         )
     return (
-        f'<div id="{_escape(section_dom_id)}" class="dup-cards">'
+        f'<div id="{_escape(section_dom_id)}" class="dup-cards" data-page="1">'
         f'{"".join(cards)}'
         '<p class="search-empty" hidden>No duplicate groups match this search.</p>'
         "</div>"
@@ -469,14 +512,26 @@ def _render_media_section(section: VizMediaSection, section_index: int) -> str:
     )
     controls_html = _render_card_controls(section_dom_id)
     search_html = _render_search_controls(section_dom_id, search_input_id)
+    pagination_html = _render_pagination_controls(section_dom_id, len(section.visual_rows))
     if not section.visual_rows:
         cards_html = '<p class="empty">(no duplicate rows)</p>'
         controls_html = ""
         search_html = ""
+        pagination_html = ""
+    results_block_html = (
+        '<section class="results-section">'
+        "<h2>Results</h2>"
+        f'<p class="preview-count">{_escape(subtitle)}</p>'
+        f"{search_html}"
+        f"{pagination_html}"
+        f"{controls_html}"
+        f"{cards_html}"
+        "</section>"
+    )
 
     return (
         '<section class="media-section">'
-        f"<h2>{_escape(section.media.upper())} | {_escape('DRY RUN')}</h2>"
+        "<h2>Overview</h2>"
         f'<div class="command-block"><h3>Command</h3><pre>{_escape(section.command_preview)}</pre></div>'
         f'<p class="exit-code">Scanner Exit Code: {section.exit_code}</p>'
         f"{_render_summary(section.summary)}"
@@ -484,11 +539,8 @@ def _render_media_section(section: VizMediaSection, section_index: int) -> str:
         f"{_render_artifact_link(section.json_path, 'JSON Report')}"
         f"{_render_artifact_link(section.csv_path, 'CSV Report')}"
         "</div>"
-        f'<p class="preview-count">{_escape(subtitle)}</p>'
-        f"{search_html}"
-        f"{controls_html}"
-        f"{cards_html}"
         "</section>"
+        f"{results_block_html}"
     )
 
 
@@ -528,7 +580,7 @@ def build_html_report(
         "h2{margin:0 0 12px;font-size:20px;}"
         "h3{margin:0 0 8px;font-size:14px;color:var(--accent);text-transform:uppercase;letter-spacing:0.04em;}"
         "h4{margin:0 0 8px;font-size:14px;color:var(--accent);}"
-        ".overview,.media-section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:16px;}"
+        ".overview,.media-section,.results-section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:16px;}"
         ".overview-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;}"
         ".theme-toggle{border:1px solid var(--border);background:var(--button-bg);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer;}"
         ".theme-toggle:hover{background:var(--button-hover);}"
@@ -546,6 +598,9 @@ def build_html_report(
         ".search-label{font-size:13px;font-weight:600;color:var(--accent);}"
         ".search-input{min-width:280px;max-width:520px;flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-soft);color:var(--text);}"
         ".search-input::placeholder{color:var(--text-muted);}"
+        ".pagination-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px;}"
+        ".page-size-select{padding:6px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-soft);color:var(--text);}"
+        ".page-status{font-size:13px;color:var(--text-muted);}"
         ".card-controls{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px;}"
         ".control-btn{border:1px solid var(--border);background:var(--button-bg);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer;}"
         ".control-btn:hover{background:var(--button-hover);}"
@@ -609,29 +664,73 @@ def build_html_report(
         "  if (!container) { return; }"
         "  container.querySelectorAll('.dup-card').forEach((card) => { card.open = shouldOpen; });"
         "}"
-        "function czkFilterCards(sectionId, inputId) {"
+        "function czkApplyCardView(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId, pageDelta) {"
         "  const container = document.getElementById(sectionId);"
         "  const input = document.getElementById(inputId);"
-        "  if (!container || !input) { return; }"
+        "  const sizeSelect = document.getElementById(sizeSelectId);"
+        "  const pageStatus = document.getElementById(pageStatusId);"
+        "  const firstBtn = document.getElementById(firstBtnId);"
+        "  const prevBtn = document.getElementById(prevBtnId);"
+        "  const nextBtn = document.getElementById(nextBtnId);"
+        "  const lastBtn = document.getElementById(lastBtnId);"
+        "  if (!container || !input || !sizeSelect) { return; }"
         "  const query = input.value.trim().toLowerCase();"
-        "  let matches = 0;"
-        "  container.querySelectorAll('.dup-card').forEach((card) => {"
+        "  const parsedSize = Number.parseInt(sizeSelect.value, 10);"
+        "  const pageSize = [25, 50, 100].includes(parsedSize) ? parsedSize : 25;"
+        "  let page = Number.parseInt(container.dataset.page || '1', 10);"
+        "  if (!Number.isFinite(page) || page < 1) { page = 1; }"
+        "  if (pageDelta === 0) { page = 1; }"
+        "  if (typeof pageDelta === 'number' && pageDelta !== 0) { page += pageDelta; }"
+        "  const allCards = Array.from(container.querySelectorAll('.dup-card'));"
+        "  const matchedCards = [];"
+        "  allCards.forEach((card) => {"
         "    const searchText = (card.dataset.search || '').toLowerCase();"
         "    const matched = query === '' || searchText.includes(query);"
-        "    card.hidden = !matched;"
         "    if (matched) {"
-        "      matches += 1;"
+        "      matchedCards.push(card);"
         "      if (query !== '') { card.open = true; }"
+        "    } else {"
+        "      card.hidden = true;"
         "    }"
         "  });"
+        "  const matches = matchedCards.length;"
+        "  const totalPages = matches === 0 ? 1 : Math.ceil(matches / pageSize);"
+        "  if (page > totalPages) { page = totalPages; }"
+        "  if (page < 1) { page = 1; }"
+        "  const start = (page - 1) * pageSize;"
+        "  const end = start + pageSize;"
+        "  matchedCards.forEach((card, index) => {"
+        "    card.hidden = index < start || index >= end;"
+        "  });"
+        "  container.dataset.page = String(page);"
         "  const emptyMessage = container.querySelector('.search-empty');"
         "  if (emptyMessage) { emptyMessage.hidden = matches !== 0; }"
+        "  if (pageStatus) {"
+        "    pageStatus.textContent = matches === 0 ? 'Page 0 of 0' : `Page ${page} of ${totalPages}`;"
+        "  }"
+        "  if (firstBtn) { firstBtn.disabled = matches === 0 || page <= 1; }"
+        "  if (prevBtn) { prevBtn.disabled = matches === 0 || page <= 1; }"
+        "  if (nextBtn) { nextBtn.disabled = matches === 0 || page >= totalPages; }"
+        "  if (lastBtn) { lastBtn.disabled = matches === 0 || page >= totalPages; }"
         "}"
-        "function czkClearCardSearch(sectionId, inputId) {"
+        "function czkFilterCards(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId) {"
+        "  czkApplyCardView(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId, 0);"
+        "}"
+        "function czkChangePage(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId, pageDelta) {"
+        "  czkApplyCardView(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId, pageDelta);"
+        "}"
+        "function czkJumpPage(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId, target) {"
+        "  const container = document.getElementById(sectionId);"
+        "  if (!container) { return; }"
+        "  if (target === 'first') { container.dataset.page = '1'; }"
+        "  if (target === 'last') { container.dataset.page = '999999999'; }"
+        "  czkApplyCardView(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId, null);"
+        "}"
+        "function czkClearCardSearch(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId) {"
         "  const input = document.getElementById(inputId);"
         "  if (!input) { return; }"
         "  input.value = '';"
-        "  czkFilterCards(sectionId, inputId);"
+        "  czkFilterCards(sectionId, inputId, sizeSelectId, pageStatusId, firstBtnId, prevBtnId, nextBtnId, lastBtnId);"
         "}"
         "function czkOpenBackground(event) {"
         "  if (!event) { return true; }"

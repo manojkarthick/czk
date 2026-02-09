@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -104,76 +105,28 @@ def _compact_name(path_value: str) -> str:
     return Path(path_value).name or path_value
 
 
-def _compact_command_value(flag: str, value: str) -> str:
-    """Shorten command values for readable terminal display.
-
-    Args:
-        flag: Command flag associated with the value.
-        value: Raw command value.
-
-    Returns:
-        Placeholder or compact path representation suitable for output.
-    """
-    placeholders = {
-        "-d": "<target-folder>",
-        "--directories": "<target-folder>",
-        "-p": "<json-report>",
-        "--pretty-file-to-save": "<json-report>",
-    }
-    if flag in placeholders:
-        return placeholders[flag]
-    if "/" in value:
-        name = Path(value).name
-        return f".../{name}" if name else "<path>"
-    return value
-
-
 def _format_command_shell(command: list[str]) -> str:
-    """Render command tokens as a multiline shell-style preview.
+    """Render command tokens as a shell-safe command string.
 
     Args:
         command: Command token list.
 
     Returns:
-        Multiline shell representation with continuation slashes.
+        Copy/pasteable shell command text.
     """
     if not command:
         return ""
-    if len(command) == 1:
-        return command[0]
-
-    executable = Path(command[0]).name or command[0]
-    prefix = f"{executable} {command[1]}"
-    parts = command[2:]
-    if not parts:
-        return prefix
-
-    grouped: list[str] = []
-    index = 0
-    while index < len(parts):
-        token = parts[index]
-        if token.startswith("-") and index + 1 < len(parts) and not parts[index + 1].startswith("-"):
-            grouped.append(f"{token} {_compact_command_value(token, parts[index + 1])}")
-            index += 2
-        else:
-            grouped.append(token)
-            index += 1
-
-    lines = [f"{prefix} \\"]
-    for offset, token in enumerate(grouped):
-        suffix = " \\" if offset < len(grouped) - 1 else ""
-        lines.append(f"  {token}{suffix}")
-    return "\n".join(lines)
+    return shlex.join(command)
 
 
 def format_command_shell(command: list[str]) -> str:
-    """Render command tokens as a compact shell-style preview.
+    """Render command tokens as a shell-safe command string.
 
     Args:
         command: Command token list.
 
     Returns:
-        Multiline shell representation with continuation slashes.
+        Copy/pasteable shell command text.
     """
     return _format_command_shell(command)
 
@@ -234,7 +187,7 @@ class Renderer:
         self.console.print("[dim]Full report paths are shown above; preview rows use compact names.[/dim]")
 
     def render_media_header(self, *, media: MediaType, mode: Mode, command: list[str]) -> None:
-        """Render media-specific header with compact command preview.
+        """Render media-specific header with full command text.
 
         Args:
             media: Media group for this section.

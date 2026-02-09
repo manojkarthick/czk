@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from czk_tool.report import DuplicatePreviewRow, MediaSummary
-from czk_tool.rendering import RenderConfig, Renderer
+from czk_tool.rendering import RenderConfig, Renderer, format_command_shell
 
 
 class RenderingTests(unittest.TestCase):
@@ -58,10 +58,10 @@ class RenderingTests(unittest.TestCase):
         self.assertNotIn("\x1b[", output)
         self.assertNotIn("combined summary", output.lower())
 
-    def test_command_multiline_has_backslash_continuation(self) -> None:
+    def test_command_output_is_full_and_not_placeholder(self) -> None:
         buffer = io.StringIO()
         renderer = Renderer(
-            RenderConfig(no_color=True, stdout_is_tty=False, terminal_width=120),
+            RenderConfig(no_color=True, stdout_is_tty=False, terminal_width=180),
             file=buffer,
         )
         renderer.render_media_header(
@@ -80,10 +80,27 @@ class RenderingTests(unittest.TestCase):
         )
         output = buffer.getvalue()
         self.assertIn("Command", output)
-        self.assertIn("czkawka_cli video \\", output)
-        self.assertIn("  -d <target-folder> \\", output)
-        self.assertIn("  -D AEB", output)
-        self.assertNotIn("/tmp/input", output)
+        self.assertIn("/opt/homebrew/bin/czkawka_cli video", output)
+        self.assertIn("-d /tmp/input", output)
+        self.assertIn("-D AEB", output)
+        self.assertNotIn("<target-folder>", output)
+        self.assertNotIn("<json-report>", output)
+
+    def test_format_command_shell_quotes_paths_with_spaces(self) -> None:
+        rendered = format_command_shell(
+            [
+                "/opt/homebrew/bin/czkawka_cli",
+                "image",
+                "-d",
+                "/tmp/input folder",
+                "--pretty-file-to-save",
+                "/tmp/report folder/out.json",
+            ]
+        )
+        self.assertEqual(
+            rendered,
+            "/opt/homebrew/bin/czkawka_cli image -d '/tmp/input folder' --pretty-file-to-save '/tmp/report folder/out.json'",
+        )
 
     def test_preview_compacts_to_filename_only(self) -> None:
         buffer = io.StringIO()

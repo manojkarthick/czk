@@ -155,6 +155,21 @@ def _video_tolerance(value: str) -> int:
     return parsed
 
 
+def _resolve_preview_limit(top: int, show_all: bool) -> int:
+    """Resolve effective preview row limit from CLI options.
+
+    Args:
+        top: Explicit `--top` value from CLI.
+        show_all: Whether `--all` was supplied.
+
+    Returns:
+        Effective preview limit passed into preview renderers.
+    """
+    if show_all:
+        return sys.maxsize
+    return top
+
+
 def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
     """Attach shared CLI arguments used by all subcommands.
 
@@ -211,6 +226,12 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         type=_positive_int,
         default=50,
         help="Number of duplicate groups to preview.",
+    )
+    parser.add_argument(
+        "--all",
+        dest="show_all",
+        action="store_true",
+        help="Show all duplicate groups in previews (overrides --top).",
     )
     parser.add_argument(
         "--out-dir",
@@ -725,6 +746,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         media_targets = _selected_media(args.media)
+        preview_limit = _resolve_preview_limit(args.top, args.show_all)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         base_name = _sanitize_name(target_dir.name)
 
@@ -742,7 +764,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 image_filter=args.image_filter,
                 image_similarity=args.image_similarity,
                 video_tolerance=args.video_tolerance,
-                top=args.top,
+                top=preview_limit,
             )
 
         renderer.render_run_header(
@@ -767,7 +789,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 image_filter=args.image_filter,
                 image_similarity=args.image_similarity,
                 video_tolerance=args.video_tolerance,
-                top=args.top,
+                top=preview_limit,
             )
 
         for media in media_targets:
@@ -785,7 +807,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 image_filter=args.image_filter,
                 image_similarity=args.image_similarity,
                 video_tolerance=args.video_tolerance,
-                top=args.top,
+                top=preview_limit,
             )
         return 0
     except (RuntimeError, ValueError) as exc:

@@ -63,11 +63,13 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
   - Uses collapsible duplicate-group cards (collapsed by default)
   - Adds per-section filename search (partial match across keep/remove filenames)
   - Auto-expands matching cards while filtering
+  - Adds per-section pagination controls with page sizes: `25`, `50`, `100`
   - Adds per-item action: `Open` (file, new tab)
   - Shows metadata per item: `Size`, `Modified`, and `Resolution` (images when available)
   - Includes `Show all` / `Collapse all` controls per media section
   - Attempts to auto-open the HTML report in the default browser
   - `--top N` limits duplicate groups rendered in the HTML visual preview
+  - `--all` renders all duplicate groups (overrides `--top`)
 
 ### Default behavior
 
@@ -92,6 +94,7 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
 - `-s, --similarity-preset {Minimal,VeryLow,Low,Medium,High,VeryHigh,None}` (image scans)
 - `-t, --tolerance 0..20` (videos only)
 - `--top N` (preview groups to render; default 50)
+- `--all` (show all duplicate groups; overrides `--top`)
 - `--out-dir <path>` (override default shared temp reports folder)
 - `--no-color` (force plain output; default is auto-color on TTY)
 
@@ -110,7 +113,7 @@ For `czk viz`, per run:
 Viz preview details:
 
 - duplicate groups render as card blocks instead of table rows
-- card summary uses readable labels (`Group`, `Keep File`, `Marked for Removal`)
+- card summary uses readable labels (`Group`, `File to Keep`, `Marked for Removal`)
 - full filesystem paths are not shown as visible text in cards
 
 Default location when `--out-dir` is omitted:
@@ -139,7 +142,7 @@ Each run prints grouped sections in this order:
 
 1. Run header (`mode`, `target_dir`, `out_dir`, `timestamp`, `media`)
 2. Per-media section (`images`, `videos`):
-   - compact command representation + exit code
+   - full command output + exit code
    - summary table (human-readable labels)
    - artifact paths
    - duplicate preview:
@@ -149,8 +152,8 @@ Each run prints grouped sections in this order:
 
 Command display notes:
 
-- Command output is intentionally compact and readable (representation, not exact shell replay).
-- Long path values are shortened to placeholders such as `<target-folder>` and `<json-report>`.
+- Command output reflects the exact executed command arguments.
+- Paths/values are shown in full and shell-quoted where needed for copy/paste debugging.
 
 ### Analyze mode: DuckDB tables
 
