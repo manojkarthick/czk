@@ -60,10 +60,12 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
   - Generates JSON + CSV reports (same schema/contracts as other modes)
   - Generates a self-contained HTML report with inline image/video previews
   - Uses dark mode by default with a top-page toggle for light mode
+  - Splits each media report into `Overview` and `Results` sections
   - Uses collapsible duplicate-group cards (collapsed by default)
   - Adds per-section filename search (partial match across keep/remove filenames)
   - Auto-expands matching cards while filtering
   - Adds per-section pagination controls with page sizes: `25`, `50`, `100`
+  - Pagination buttons are ordered: `First`, `Previous`, `Next`, `Last`
   - Adds per-item action: `Open` (file, new tab)
   - Shows metadata per item: `Size`, `Modified`, and `Resolution` (images when available)
   - Includes `Show all` / `Collapse all` controls per media section
@@ -94,7 +96,7 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
 - `-s, --similarity-preset {Minimal,VeryLow,Low,Medium,High,VeryHigh,None}` (image scans)
 - `-t, --tolerance 0..20` (videos only)
 - `--top N` (preview groups to render; default 50)
-- `--all` (show all duplicate groups; overrides `--top`)
+- `--all` (show all duplicate groups; overrides `--top` when both are provided)
 - `--out-dir <path>` (override default shared temp reports folder)
 - `--no-color` (force plain output; default is auto-color on TTY)
 
@@ -115,6 +117,7 @@ Viz preview details:
 - duplicate groups render as card blocks instead of table rows
 - card summary uses readable labels (`Group`, `File to Keep`, `Marked for Removal`)
 - full filesystem paths are not shown as visible text in cards
+- each media report shows `Overview` + `Results` sections
 
 Default location when `--out-dir` is omitted:
 

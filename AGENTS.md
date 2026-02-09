@@ -51,6 +51,7 @@ Current defaults:
 - Runs both images and videos unless overridden.
 - Image options: similarity `High`, hash-size `32`.
 - Video option: tolerance `10`.
+- Preview defaults to `--top 50`; `--all` overrides `--top` and shows all groups.
 - Output artifacts are timestamped JSON/CSV files.
 - Default reports directory (when `--out-dir` is omitted):
   - `<system-temp>/czk-reports`
