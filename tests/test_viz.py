@@ -116,6 +116,11 @@ class VizReportTests(unittest.TestCase):
         self.assertIn("Media Types", html_report)
         self.assertIn("IMAGES | DRY RUN", html_report)
         self.assertIn("VIDEOS | DRY RUN", html_report)
+        self.assertIn('<body data-theme="dark">', html_report)
+        self.assertIn('id="theme-toggle"', html_report)
+        self.assertIn("Light mode", html_report)
+        self.assertIn("function czkToggleTheme()", html_report)
+        self.assertIn("function czkOpenBackground(event)", html_report)
         self.assertIn("Scanner Exit Code: 0", html_report)
         self.assertIn("Show all", html_report)
         self.assertIn("Collapse all", html_report)
@@ -133,7 +138,7 @@ class VizReportTests(unittest.TestCase):
         self.assertIn("<img ", html_report)
         self.assertIn("<video controls preload=\"metadata\" muted>", html_report)
         self.assertIn(">Open</a>", html_report)
-        self.assertIn(">Reveal</a>", html_report)
+        self.assertIn("onclick=\"return czkOpenBackground(event)\"", html_report)
         self.assertIn("Size:</strong>", html_report)
         self.assertIn("Modified:</strong>", html_report)
         self.assertIn("Resolution:</strong>", html_report)
@@ -257,7 +262,6 @@ class VizReportTests(unittest.TestCase):
 
         self.assertIn("Preview unavailable", report)
         self.assertNotIn(">Open</a>", report)
-        self.assertNotIn(">Reveal</a>", report)
 
 
 if __name__ == "__main__":

@@ -98,23 +98,6 @@ def _path_uri(path_value: str) -> str | None:
         return None
 
 
-def _parent_uri(path_value: str) -> str | None:
-    """Convert the parent directory of a path to a `file://` URI.
-
-    Args:
-        path_value: Filesystem path string.
-
-    Returns:
-        Parent folder URI when conversion succeeds, else `None`.
-    """
-    if not path_value:
-        return None
-    try:
-        return Path(path_value).expanduser().resolve(strict=False).parent.as_uri()
-    except ValueError:
-        return None
-
-
 def _artifact_uri(path: Path) -> str | None:
     """Convert a path object to a `file://` URI.
 
@@ -234,7 +217,7 @@ def _render_media_metadata(media: MediaType, metadata: MediaItemMetadata | None)
 
 
 def _render_media_actions(path_value: str) -> str:
-    """Render open/reveal links for one media item.
+    """Render an open link for one media item.
 
     Args:
         path_value: Filesystem path for the media item.
@@ -243,15 +226,10 @@ def _render_media_actions(path_value: str) -> str:
         HTML actions fragment, or an empty string when no actions are available.
     """
     open_uri = _path_uri(path_value)
-    reveal_uri = _parent_uri(path_value)
     links: list[str] = []
     if open_uri is not None:
         links.append(
-            f'<a class="media-link" href="{_escape(open_uri)}" target="_blank" rel="noreferrer">Open</a>'
-        )
-    if reveal_uri is not None:
-        links.append(
-            f'<a class="media-link" href="{_escape(reveal_uri)}" target="_blank" rel="noreferrer">Reveal</a>'
+            f'<a class="media-link" href="{_escape(open_uri)}" target="_blank" rel="noopener noreferrer" onclick="return czkOpenBackground(event)">Open</a>'
         )
     if not links:
         return ""
@@ -475,56 +453,67 @@ def build_html_report(
         '<meta name="viewport" content="width=device-width, initial-scale=1">'
         "<title>czk viz report</title>"
         "<style>"
-        "body{margin:0;background:#f4f6f8;color:#1a1a1a;font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;}"
+        ":root{color-scheme:dark light;}"
+        "body[data-theme='dark']{--bg:#0f141a;--surface:#151d24;--surface-muted:#1a2430;--surface-soft:#111922;--text:#e8edf3;--text-muted:#9fb0c3;--accent:#8bb9ff;--border:#324253;--border-soft:#2a3847;--chip-bg:#1f2b38;--button-bg:#1d2a38;--button-hover:#25364a;}"
+        "body[data-theme='light']{--bg:#f4f6f8;--surface:#ffffff;--surface-muted:#f6f9fc;--surface-soft:#fcfdff;--text:#1a1a1a;--text-muted:#44566a;--accent:#0f2742;--border:#d7dee8;--border-soft:#e3e8ef;--chip-bg:#ffffff;--button-bg:#f8fafc;--button-hover:#edf2f8;}"
+        "body{margin:0;background:var(--bg);color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;}"
+        "a{color:var(--accent);}"
         "main{max-width:1280px;margin:0 auto;padding:24px;}"
-        "h1{margin:0 0 16px;font-size:28px;}"
+        "h1{margin:0;font-size:28px;}"
         "h2{margin:0 0 12px;font-size:20px;}"
-        "h3{margin:0 0 8px;font-size:14px;color:#243447;text-transform:uppercase;letter-spacing:0.04em;}"
-        "h4{margin:0 0 8px;font-size:14px;color:#243447;}"
-        ".overview,.media-section{background:#fff;border:1px solid #dde3ea;border-radius:12px;padding:16px 18px;margin-bottom:16px;}"
+        "h3{margin:0 0 8px;font-size:14px;color:var(--accent);text-transform:uppercase;letter-spacing:0.04em;}"
+        "h4{margin:0 0 8px;font-size:14px;color:var(--accent);}"
+        ".overview,.media-section{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:16px 18px;margin-bottom:16px;}"
+        ".overview-header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;}"
+        ".theme-toggle{border:1px solid var(--border);background:var(--button-bg);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer;}"
+        ".theme-toggle:hover{background:var(--button-hover);}"
         ".overview-grid{display:grid;grid-template-columns:220px 1fr;gap:8px 12px;align-items:start;}"
-        ".label{font-weight:700;color:#0f2742;}"
+        ".label{font-weight:700;color:var(--accent);}"
         ".value{word-break:break-word;}"
-        ".command-block pre{margin:0;padding:10px;border-radius:8px;background:#f2f5f9;border:1px solid #d7dee8;overflow:auto;}"
-        ".exit-code,.preview-count{font-weight:600;color:#0f2742;}"
+        ".command-block pre{margin:0;padding:10px;border-radius:8px;background:var(--surface-muted);border:1px solid var(--border);overflow:auto;}"
+        ".exit-code,.preview-count{font-weight:600;color:var(--accent);}"
         ".summary-block{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;margin:12px 0;}"
-        ".summary-row{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid #d7dee8;border-radius:8px;background:#fbfcfd;}"
+        ".summary-row{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--surface-soft);}"
         ".summary-label{font-weight:600;}"
         ".summary-value{font-weight:700;}"
         ".artifact-block{display:flex;flex-direction:column;gap:6px;margin:8px 0 12px;}"
         ".card-controls{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px;}"
-        ".control-btn{border:1px solid #ccd5e1;background:#f8fafc;color:#0f2742;border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer;}"
-        ".control-btn:hover{background:#edf2f8;}"
+        ".control-btn{border:1px solid var(--border);background:var(--button-bg);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer;}"
+        ".control-btn:hover{background:var(--button-hover);}"
         ".dup-cards{display:grid;gap:10px;}"
-        ".dup-card{border:1px solid #d7dee8;border-radius:10px;background:#fdfefe;overflow:hidden;}"
-        ".dup-card-summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;cursor:pointer;background:#f6f9fc;}"
-        ".summary-chip{border:1px solid #d7dee8;border-radius:999px;padding:3px 8px;background:#ffffff;font-size:12px;line-height:1.4;}"
+        ".dup-card{border:1px solid var(--border);border-radius:10px;background:var(--surface-soft);overflow:hidden;}"
+        ".dup-card-summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;cursor:pointer;background:var(--surface-muted);}"
+        ".summary-chip{border:1px solid var(--border);border-radius:999px;padding:3px 8px;background:var(--chip-bg);font-size:12px;line-height:1.4;}"
         ".dup-card-body{padding:12px;display:grid;gap:12px;}"
         ".dup-card-section{display:grid;gap:8px;}"
-        ".media-item{display:grid;grid-template-columns:160px minmax(220px,1fr);gap:10px;padding:8px;border:1px solid #e3e8ef;border-radius:8px;background:#fcfdff;}"
-        ".media-preview{width:160px;height:110px;background:#f0f3f7;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;}"
+        ".media-item{display:grid;grid-template-columns:160px minmax(220px,1fr);gap:10px;padding:8px;border:1px solid var(--border-soft);border-radius:8px;background:var(--surface);}"
+        ".media-preview{width:160px;height:110px;background:var(--surface-muted);border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;}"
         ".media-preview img,.media-preview video{width:100%;height:100%;object-fit:cover;display:block;}"
-        ".preview-unavailable{font-size:12px;color:#44566a;padding:8px;text-align:center;}"
+        ".preview-unavailable{font-size:12px;color:var(--text-muted);padding:8px;text-align:center;}"
         ".media-meta{min-width:0;display:grid;gap:6px;align-content:start;}"
         ".media-name{font-weight:700;word-break:break-word;}"
         ".media-actions{display:flex;gap:10px;flex-wrap:wrap;}"
         ".media-link{font-size:12px;}"
-        ".media-details{display:grid;gap:4px;font-size:12px;color:#33495f;}"
+        ".media-details{display:grid;gap:4px;font-size:12px;color:var(--text-muted);}"
         ".remove-items{display:grid;gap:8px;}"
-        ".empty{padding:12px;border:1px dashed #b8c4d3;border-radius:8px;background:#f9fbfd;color:#44566a;}"
-        ".empty-inline{margin:0;padding:8px;border:1px dashed #b8c4d3;border-radius:8px;background:#f9fbfd;color:#44566a;}"
+        ".empty{padding:12px;border:1px dashed var(--border);border-radius:8px;background:var(--surface-muted);color:var(--text-muted);}"
+        ".empty-inline{margin:0;padding:8px;border:1px dashed var(--border);border-radius:8px;background:var(--surface-muted);color:var(--text-muted);}"
         "@media (max-width:900px){"
         "main{padding:12px;}"
+        ".overview-header{align-items:flex-start;flex-direction:column;}"
         ".overview-grid{grid-template-columns:1fr;}"
         ".media-item{grid-template-columns:1fr;}"
         ".media-preview{width:100%;height:220px;}"
         "}"
         "</style>"
         "</head>"
-        "<body>"
+        '<body data-theme="dark">'
         "<main>"
         '<section class="overview">'
+        '<div class="overview-header">'
         "<h1>czk viz report</h1>"
+        '<button id="theme-toggle" type="button" class="theme-toggle" onclick="czkToggleTheme()">Light mode</button>'
+        "</div>"
         '<div class="overview-grid">'
         f'<div class="label">Run Mode</div><div class="value">{_escape(run_context.run_mode)}</div>'
         f'<div class="label">Target Folder</div><div class="value">{_escape(str(run_context.target_dir))}</div>'
@@ -536,10 +525,31 @@ def build_html_report(
         f"{rendered_sections}"
         "</main>"
         "<script>"
+        "function czkToggleTheme() {"
+        "  const body = document.body;"
+        "  const button = document.getElementById('theme-toggle');"
+        "  if (!body) { return; }"
+        "  const current = body.getAttribute('data-theme') || 'dark';"
+        "  const next = current === 'dark' ? 'light' : 'dark';"
+        "  body.setAttribute('data-theme', next);"
+        "  if (button) { button.textContent = next === 'dark' ? 'Light mode' : 'Dark mode'; }"
+        "}"
         "function czkToggleCards(sectionId, shouldOpen) {"
         "  const container = document.getElementById(sectionId);"
         "  if (!container) { return; }"
         "  container.querySelectorAll('.dup-card').forEach((card) => { card.open = shouldOpen; });"
+        "}"
+        "function czkOpenBackground(event) {"
+        "  if (!event) { return true; }"
+        "  event.preventDefault();"
+        "  const anchor = event.currentTarget;"
+        "  if (!anchor) { return false; }"
+        "  const href = anchor.getAttribute('href');"
+        "  if (!href) { return false; }"
+        "  const popup = window.open(href, '_blank', 'noopener,noreferrer');"
+        "  if (popup) { popup.blur(); }"
+        "  window.focus();"
+        "  return false;"
         "}"
         "</script>"
         "</body>"
