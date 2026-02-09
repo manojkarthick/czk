@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -65,6 +66,18 @@ class CliArgTests(unittest.TestCase):
     def test_analyse_alias_resolves_to_analyze(self) -> None:
         args = parse_args(["analyse"])
         self.assertEqual(args.command, "analyze")
+
+    def test_viz_defaults(self) -> None:
+        args = parse_args(["viz"])
+        self.assertEqual(args.command, "viz")
+        self.assertEqual(args.directory, ".")
+        self.assertEqual(args.media, "both")
+        self.assertEqual(args.hash_size, 32)
+        self.assertEqual(args.image_similarity, "High")
+        self.assertEqual(args.video_tolerance, 10)
+        self.assertEqual(args.top, 50)
+        self.assertIsNone(args.out_dir)
+        self.assertFalse(args.no_color)
 
     def test_analyze_accepts_shared_flags(self) -> None:
         args = parse_args(
@@ -131,6 +144,43 @@ class CliArgTests(unittest.TestCase):
         ):
             exit_code = cli.main(["analyze", ".", "--media", "images", "--no-color"])
             self.assertEqual(exit_code, 1)
+
+    def test_main_viz_opens_browser_and_skips_terminal_tables(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir, patch.object(
+            cli, "ensure_czkawka_cli", return_value="/opt/homebrew/bin/czkawka_cli"
+        ), patch.object(
+            cli,
+            "_scan_one_media",
+            return_value=cli._MediaRunResult(
+                command=["/opt/homebrew/bin/czkawka_cli", "image", "--dry-run"],
+                exit_code=0,
+                summary=cli.MediaSummary(
+                    total_found=10,
+                    duplicate_groups=2,
+                    duplicates_to_remove=3,
+                    after_remove_estimate=7,
+                ),
+                json_path=Path("/tmp/demo-images.json"),
+                csv_path=Path("/tmp/demo-images.csv"),
+            ),
+        ) as scan_mock, patch.object(
+            cli, "build_visual_rows_from_csv", return_value=([], 0, 0)
+        ), patch.object(
+            cli, "build_html_report", return_value="<html><body>report</body></html>"
+        ), patch.object(
+            cli.webbrowser, "open", return_value=True
+        ) as browser_open_mock, patch.object(
+            cli.Renderer, "render_run_header"
+        ) as run_header_mock:
+            exit_code = cli.main(["viz", ".", "--media", "images", "--out-dir", tmp_dir, "--no-color"])
+
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(scan_mock.call_count, 1)
+            browser_open_mock.assert_called_once()
+            run_header_mock.assert_not_called()
+
+            html_files = list(Path(tmp_dir).glob("*.html"))
+            self.assertEqual(len(html_files), 1)
 
     def test_resolve_out_dir_defaults_to_shared_temp(self) -> None:
         with patch.object(cli.tempfile, "gettempdir", return_value="/tmp/czk-temp"):

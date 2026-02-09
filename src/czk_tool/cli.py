@@ -4,6 +4,8 @@ import argparse
 import re
 import sys
 import tempfile
+import webbrowser
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Sequence, cast
@@ -21,10 +23,20 @@ from .duckdb_shell import (
     ensure_duckdb_cli,
     launch_duckdb_session,
 )
-from .rendering import RenderConfig, Renderer
-from .report import build_preview_rows_from_csv, build_rows, build_summary, load_duplicate_groups, write_csv
+from .rendering import RenderConfig, Renderer, format_command_shell
+from .report import (
+    MediaSummary,
+    build_preview_rows_from_csv,
+    build_rows,
+    build_summary,
+    build_visual_rows_from_csv,
+    load_duplicate_groups,
+    write_csv,
+)
+from .viz import VizMediaSection, VizRunContext, build_html_report
 
-Mode = Literal["test", "execute", "analyze"]
+Mode = Literal["test", "execute", "analyze", "viz"]
+RenderMode = Literal["test", "execute", "analyze"]
 
 IMAGE_SIMILARITY_CHOICES = (
     "Minimal",
@@ -35,6 +47,15 @@ IMAGE_SIMILARITY_CHOICES = (
     "VeryHigh",
     "None",
 )
+
+
+@dataclass(frozen=True)
+class _MediaRunResult:
+    command: list[str]
+    exit_code: int
+    summary: MediaSummary
+    json_path: Path
+    csv_path: Path
 
 
 def _positive_int(value: str) -> int:
@@ -109,7 +130,7 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         "--top",
         type=_positive_int,
         default=50,
-        help="Number of CSV rows to pretty print.",
+        help="Number of duplicate groups to preview.",
     )
     parser.add_argument(
         "--out-dir",
@@ -151,6 +172,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Run dry-run analysis then open an interactive DuckDB shell.",
     )
     _add_common_arguments(analyze_parser)
+
+    viz_parser = subparsers.add_parser(
+        "viz",
+        help="Run dry-run analysis and open a self-contained HTML report.",
+    )
+    _add_common_arguments(viz_parser)
 
     return parser
 
@@ -251,10 +278,97 @@ def _build_artifact_paths(
         counter += 1
 
 
+def _build_html_artifact_path(*, out_dir: Path, base_name: str, timestamp: str) -> Path:
+    """Build a unique HTML report path for a viz run.
+
+    Args:
+        out_dir: Target directory for generated reports.
+        base_name: Sanitized base folder name.
+        timestamp: Run timestamp string.
+
+    Returns:
+        HTML report path guaranteed not to collide.
+    """
+    counter = 0
+    while True:
+        suffix = f"-{counter}" if counter else ""
+        html_path = out_dir / f"{base_name}-viz-{timestamp}{suffix}.html"
+        if not html_path.exists():
+            return html_path
+        counter += 1
+
+
+def _scan_one_media(
+    *,
+    media: MediaType,
+    target_dir: Path,
+    out_dir: Path,
+    timestamp: str,
+    base_name: str,
+    czkawka_executable: str,
+    hash_size: int,
+    image_similarity: str,
+    video_tolerance: int,
+    dry_run: bool,
+    report_mode: Literal["test", "execute"],
+) -> _MediaRunResult:
+    """Run one media scan and persist normalized report artifacts.
+
+    Args:
+        media: Media target for this run.
+        target_dir: Directory being scanned.
+        out_dir: Directory to write report artifacts.
+        timestamp: Run timestamp suffix.
+        base_name: Sanitized target folder name.
+        czkawka_executable: Path to Czkawka CLI binary.
+        hash_size: Image hash size.
+        image_similarity: Image similarity preset.
+        video_tolerance: Video tolerance value.
+        dry_run: Whether Czkawka should run with `--dry-run`.
+        report_mode: Row projection mode used for CSV normalization.
+
+    Returns:
+        Media run details with command metadata and report paths.
+    """
+    total_found = count_media_files(target_dir, media)
+    json_path, csv_path = _build_artifact_paths(
+        out_dir=out_dir,
+        base_name=base_name,
+        media=media,
+        timestamp=timestamp,
+    )
+
+    command = build_czkawka_command(
+        executable=czkawka_executable,
+        media=media,
+        target_dir=target_dir,
+        pretty_json_path=json_path,
+        dry_run=dry_run,
+        image_similarity=image_similarity,
+        hash_size=hash_size,
+        video_tolerance=video_tolerance,
+    )
+
+    completed = run_czkawka(command)
+
+    groups = load_duplicate_groups(json_path)
+    rows = build_rows(groups, mode=report_mode)
+    write_csv(rows, csv_path)
+
+    summary = build_summary(total_found=total_found, duplicate_groups=len(groups), rows=rows)
+    return _MediaRunResult(
+        command=command,
+        exit_code=completed.returncode,
+        summary=summary,
+        json_path=json_path,
+        csv_path=csv_path,
+    )
+
+
 def _run_one_media(
     *,
     renderer: Renderer,
-    mode: Mode,
+    mode: RenderMode,
     media: MediaType,
     target_dir: Path,
     out_dir: Path,
@@ -285,48 +399,131 @@ def _run_one_media(
     Returns:
         Tuple of report paths `(json_path, csv_path)` for this media run.
     """
-    dry_run = mode in {"test", "analyze"}
-    total_found = count_media_files(target_dir, media)
-    json_path, csv_path = _build_artifact_paths(
-        out_dir=out_dir,
-        base_name=base_name,
-        media=media,
-        timestamp=timestamp,
-    )
-
-    command = build_czkawka_command(
-        executable=czkawka_executable,
+    dry_run = mode != "execute"
+    report_mode: Literal["test", "execute"] = "execute" if mode == "execute" else "test"
+    result = _scan_one_media(
         media=media,
         target_dir=target_dir,
-        pretty_json_path=json_path,
-        dry_run=dry_run,
-        image_similarity=image_similarity,
+        out_dir=out_dir,
+        timestamp=timestamp,
+        base_name=base_name,
+        czkawka_executable=czkawka_executable,
         hash_size=hash_size,
+        image_similarity=image_similarity,
         video_tolerance=video_tolerance,
+        dry_run=dry_run,
+        report_mode=report_mode,
     )
 
-    renderer.render_media_header(media=media, mode=mode, command=command)
+    renderer.render_media_header(media=media, mode=mode, command=result.command)
+    renderer.render_exit_code(result.exit_code)
+    renderer.render_summary(result.summary)
+    renderer.render_artifacts(json_path=result.json_path, csv_path=result.csv_path)
 
-    completed = run_czkawka(command)
-    renderer.render_exit_code(completed.returncode)
-
-    groups = load_duplicate_groups(json_path)
-    report_mode = "test" if mode == "analyze" else mode
-    rows = build_rows(groups, mode=report_mode)
-    write_csv(rows, csv_path)
-
-    summary = build_summary(total_found=total_found, duplicate_groups=len(groups), rows=rows)
-    renderer.render_summary(summary)
-    renderer.render_artifacts(json_path=json_path, csv_path=csv_path)
-
-    preview_rows, total_rows, shown_rows = build_preview_rows_from_csv(csv_path, top=top)
+    preview_rows, total_rows, shown_rows = build_preview_rows_from_csv(result.csv_path, top=top)
     renderer.render_preview_table(
         preview_rows=preview_rows,
         shown_rows=shown_rows,
         total_rows=total_rows,
     )
 
-    return json_path, csv_path
+    return result.json_path, result.csv_path
+
+
+def _run_viz(
+    *,
+    renderer: Renderer,
+    media_targets: list[MediaType],
+    target_dir: Path,
+    out_dir: Path,
+    timestamp: str,
+    base_name: str,
+    czkawka_executable: str,
+    hash_size: int,
+    image_similarity: str,
+    video_tolerance: int,
+    top: int,
+) -> int:
+    """Run viz workflow and open the generated HTML report.
+
+    Args:
+        renderer: Renderer used for status output.
+        media_targets: Media groups selected by CLI args.
+        target_dir: Directory to scan.
+        out_dir: Artifact output directory.
+        timestamp: Run timestamp suffix.
+        base_name: Sanitized target folder name.
+        czkawka_executable: Path to Czkawka CLI binary.
+        hash_size: Image hash size.
+        image_similarity: Image similarity preset.
+        video_tolerance: Video tolerance value.
+        top: Visual row limit for HTML output.
+
+    Returns:
+        Process-style exit code.
+    """
+    sections: list[VizMediaSection] = []
+
+    for media in media_targets:
+        result = _scan_one_media(
+            media=media,
+            target_dir=target_dir,
+            out_dir=out_dir,
+            timestamp=timestamp,
+            base_name=base_name,
+            czkawka_executable=czkawka_executable,
+            hash_size=hash_size,
+            image_similarity=image_similarity,
+            video_tolerance=video_tolerance,
+            dry_run=True,
+            report_mode="test",
+        )
+        visual_rows, total_rows, shown_rows = build_visual_rows_from_csv(result.csv_path, top=top)
+        sections.append(
+            VizMediaSection(
+                media=media,
+                command_preview=format_command_shell(result.command),
+                exit_code=result.exit_code,
+                summary=result.summary,
+                json_path=result.json_path,
+                csv_path=result.csv_path,
+                visual_rows=visual_rows,
+                shown_rows=shown_rows,
+                total_rows=total_rows,
+            )
+        )
+
+    html_path = _build_html_artifact_path(out_dir=out_dir, base_name=base_name, timestamp=timestamp)
+    html_content = build_html_report(
+        run_context=VizRunContext(
+            run_mode="VIZ (DRY RUN)",
+            target_dir=target_dir,
+            out_dir=out_dir,
+            timestamp=timestamp,
+            media_targets=media_targets,
+        ),
+        media_sections=sections,
+    )
+    html_path.write_text(html_content, encoding="utf-8")
+
+    renderer.console.print(f"HTML Report: {html_path}")
+    for section in sections:
+        renderer.console.print(f"{section.media} JSON Report: {section.json_path}")
+        renderer.console.print(f"{section.media} CSV Report: {section.csv_path}")
+
+    try:
+        opened = webbrowser.open(html_path.as_uri(), new=2)
+    except Exception as exc:  # pragma: no cover - webbrowser backend variance.
+        renderer.console.print(f"Browser auto-open failed: {exc}")
+        renderer.console.print(f"Open manually: {html_path.as_uri()}")
+        return 0
+
+    if opened:
+        renderer.console.print("Opened HTML report in the default browser.")
+    else:
+        renderer.console.print("Could not auto-open browser. Open manually:")
+        renderer.console.print(html_path.as_uri())
+    return 0
 
 
 def _run_analyze(
@@ -423,6 +620,21 @@ def main(argv: Sequence[str] | None = None) -> int:
         media_targets = _selected_media(args.media)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         base_name = _sanitize_name(target_dir.name)
+
+        if mode == "viz":
+            return _run_viz(
+                renderer=renderer,
+                media_targets=media_targets,
+                target_dir=target_dir,
+                out_dir=out_dir,
+                timestamp=timestamp,
+                base_name=base_name,
+                czkawka_executable=czkawka_executable,
+                hash_size=args.hash_size,
+                image_similarity=args.image_similarity,
+                video_tolerance=args.video_tolerance,
+                top=args.top,
+            )
 
         renderer.render_run_header(
             mode=mode,

@@ -15,6 +15,7 @@ from czk_tool.report import (
     DuplicateRow,
     build_preview_rows_from_csv,
     build_pretty_table_from_csv,
+    build_visual_rows_from_csv,
     write_csv,
 )
 
@@ -86,6 +87,35 @@ class CsvOutputTests(unittest.TestCase):
             self.assertEqual(preview_rows[0].file_to_keep, "/tmp/keep.jpg")
             self.assertEqual(preview_rows[0].remove_count, 2)
             self.assertEqual(preview_rows[0].first_remove, "/tmp/r1.jpg")
+
+    def test_build_visual_rows_from_csv_keeps_full_remove_list_and_honors_top(self) -> None:
+        rows = [
+            DuplicateRow(
+                index=1,
+                file_to_keep="/tmp/keep-1.jpg",
+                files_to_remove=["/tmp/r1.jpg", "/tmp/r2.jpg"],
+                count=2,
+            ),
+            DuplicateRow(
+                index=2,
+                file_to_keep="/tmp/keep-2.jpg",
+                files_to_remove=["/tmp/r3.jpg"],
+                count=1,
+            ),
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            csv_path = Path(tmp_dir) / "report.csv"
+            write_csv(rows, csv_path)
+            visual_rows, total_rows, shown_rows = build_visual_rows_from_csv(csv_path, top=1)
+
+            self.assertEqual(total_rows, 2)
+            self.assertEqual(shown_rows, 1)
+            self.assertEqual(len(visual_rows), 1)
+            self.assertEqual(visual_rows[0].index, 1)
+            self.assertEqual(visual_rows[0].file_to_keep, "/tmp/keep-1.jpg")
+            self.assertEqual(visual_rows[0].remove_count, 2)
+            self.assertEqual(visual_rows[0].files_to_remove, ["/tmp/r1.jpg", "/tmp/r2.jpg"])
 
 
 if __name__ == "__main__":

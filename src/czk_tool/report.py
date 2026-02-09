@@ -28,6 +28,14 @@ class DuplicatePreviewRow:
 
 
 @dataclass(frozen=True)
+class DuplicateVisualRow:
+    index: int
+    file_to_keep: str
+    files_to_remove: list[str]
+    remove_count: int
+
+
+@dataclass(frozen=True)
 class MediaSummary:
     total_found: int
     duplicate_groups: int
@@ -264,6 +272,23 @@ def preview_row_from_duplicate_row(row: DuplicateRow) -> DuplicatePreviewRow:
     )
 
 
+def visual_row_from_duplicate_row(row: DuplicateRow) -> DuplicateVisualRow:
+    """Convert a duplicate row into visual preview shape.
+
+    Args:
+        row: Full duplicate row.
+
+    Returns:
+        Visual row that retains all remove paths for HTML rendering.
+    """
+    return DuplicateVisualRow(
+        index=row.index,
+        file_to_keep=row.file_to_keep,
+        files_to_remove=row.files_to_remove,
+        remove_count=row.count,
+    )
+
+
 def build_summary(total_found: int, duplicate_groups: int, rows: list[DuplicateRow]) -> MediaSummary:
     """Compute per-media summary metrics from counted files and duplicate rows.
 
@@ -363,6 +388,38 @@ def build_preview_rows_from_csv(
         preview_rows.append(preview_row_from_duplicate_row(parsed_row))
 
     return preview_rows, total_rows, len(preview_rows)
+
+
+def build_visual_rows_from_csv(
+    csv_path: Path,
+    top: int,
+) -> tuple[list[DuplicateVisualRow], int, int]:
+    """Build visual rows by re-reading the persisted CSV output.
+
+    Args:
+        csv_path: Path to duplicate CSV file.
+        top: Maximum rows to include in visual preview.
+
+    Returns:
+        Tuple of `(visual_rows, total_rows, shown_rows)`.
+    """
+    rows = _read_csv_rows(csv_path)
+    total_rows = len(rows)
+    shown_rows = rows[: max(0, top)]
+
+    visual_rows: list[DuplicateVisualRow] = []
+    for ordinal, row in enumerate(shown_rows, start=1):
+        files_to_remove = _parse_remove_list(row.get("files_to_remove", "[]"))
+        row_index = row.get("index", row.get("#", ""))
+        parsed_row = DuplicateRow(
+            index=_parse_int(row_index, ordinal),
+            file_to_keep=row.get("file_to_keep", ""),
+            files_to_remove=files_to_remove,
+            count=_parse_int(row.get("count", ""), len(files_to_remove)),
+        )
+        visual_rows.append(visual_row_from_duplicate_row(parsed_row))
+
+    return visual_rows, total_rows, len(visual_rows)
 
 
 def _clip(value: str, width: int) -> str:

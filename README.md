@@ -29,6 +29,7 @@ czk execute [directory]
 czk analyze [directory]
 # alias:
 czk analyse [directory]
+czk viz [directory]
 ```
 
 ## czk (Python CLI Wrapper)
@@ -54,6 +55,13 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
   - Loads reports + media inventory into an in-memory DuckDB session
   - Opens interactive DuckDB shell for arbitrary SQL queries
 
+- `czk viz [directory]`
+  - Runs dry-run scans (no deletion) for selected media
+  - Generates JSON + CSV reports (same schema/contracts as other modes)
+  - Generates a self-contained HTML report with inline image/video previews
+  - Attempts to auto-open the HTML report in the default browser
+  - `--top N` limits duplicate groups rendered in the HTML visual preview
+
 ### Default behavior
 
 - Scans both images and videos (`--media both`)
@@ -72,7 +80,7 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
 - `--hash-size {8,16,32,64}`
 - `--image-similarity {Minimal,VeryLow,Low,Medium,High,VeryHigh,None}`
 - `--video-tolerance 0..20`
-- `--top N` (table rows to print; default 50)
+- `--top N` (preview groups to render; default 50)
 - `--out-dir <path>` (override default shared temp reports folder)
 - `--no-color` (force plain output; default is auto-color on TTY)
 
@@ -82,6 +90,11 @@ Per media type, per run:
 
 - JSON: `<base-folder>-<media>-<YYYYMMDD-HHMMSS>.json`
 - CSV: `<base-folder>-<media>-<YYYYMMDD-HHMMSS>.csv`
+
+For `czk viz`, per run:
+
+- HTML: `<base-folder>-viz-<YYYYMMDD-HHMMSS>.html`
+- JSON/CSV artifacts are still generated per selected media type
 
 Default location when `--out-dir` is omitted:
 

@@ -166,6 +166,18 @@ def _format_command_shell(command: list[str]) -> str:
     return "\n".join(lines)
 
 
+def format_command_shell(command: list[str]) -> str:
+    """Render command tokens as a compact shell-style preview.
+
+    Args:
+        command: Command token list.
+
+    Returns:
+        Multiline shell representation with continuation slashes.
+    """
+    return _format_command_shell(command)
+
+
 def _preview_layout(width: int) -> Literal["wide", "medium", "narrow"]:
     """Choose preview layout mode based on available terminal width.
 
@@ -235,7 +247,7 @@ class Renderer:
         table = Table.grid(expand=True, padding=(0, 1))
         table.add_column(style="bold cyan", no_wrap=True)
         table.add_column(style="white")
-        table.add_row("Command", _format_command_shell(command))
+        table.add_row("Command", format_command_shell(command))
 
         self.console.print()
         self.console.print(Panel(table, title=title, border_style=mode_style))
