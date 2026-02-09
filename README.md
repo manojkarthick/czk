@@ -61,6 +61,8 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
   - Generates a self-contained HTML report with inline image/video previews
   - Uses dark mode by default with a top-page toggle for light mode
   - Uses collapsible duplicate-group cards (collapsed by default)
+  - Adds per-section filename search (partial match across keep/remove filenames)
+  - Auto-expands matching cards while filtering
   - Adds per-item action: `Open` (file, new tab)
   - Shows metadata per item: `Size`, `Modified`, and `Resolution` (images when available)
   - Includes `Show all` / `Collapse all` controls per media section

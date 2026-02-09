@@ -236,6 +236,40 @@ def _render_media_actions(path_value: str) -> str:
     return '<div class="media-actions">' + "".join(links) + "</div>"
 
 
+def _file_name_for_search(path_value: str) -> str:
+    """Return a normalized filename token for card search indexing.
+
+    Args:
+        path_value: File path string from a duplicate row.
+
+    Returns:
+        Lowercase filename text used for partial-match lookup.
+    """
+    file_name = Path(path_value).name or path_value
+    return file_name.strip().lower()
+
+
+def _build_search_index(row: DuplicateVisualRow) -> str:
+    """Build searchable filename text for one duplicate card.
+
+    Args:
+        row: Duplicate row containing keep/remove file paths.
+
+    Returns:
+        Lowercase search text with keep and remove filenames.
+    """
+    names: list[str] = []
+    keep_name = _file_name_for_search(row.file_to_keep)
+    if keep_name:
+        names.append(keep_name)
+    names.extend(
+        name
+        for name in (_file_name_for_search(remove_path) for remove_path in row.files_to_remove)
+        if name
+    )
+    return " ".join(names)
+
+
 def _render_media_item(
     *,
     path_value: str,
@@ -326,6 +360,27 @@ def _render_card_controls(section_dom_id: str) -> str:
     )
 
 
+def _render_search_controls(section_dom_id: str, search_input_id: str) -> str:
+    """Render filename search controls for one media section.
+
+    Args:
+        section_dom_id: DOM id for the duplicate-card container.
+        search_input_id: DOM id for the section search input.
+
+    Returns:
+        HTML controls fragment for card filtering.
+    """
+    return (
+        '<div class="search-controls">'
+        f'<label class="search-label" for="{_escape(search_input_id)}">Search filenames</label>'
+        f'<input id="{_escape(search_input_id)}" class="search-input" type="search" '
+        'placeholder="Partial match across keep and remove files" '
+        f'oninput="czkFilterCards(\'{section_dom_id}\', \'{search_input_id}\')">'
+        f'<button type="button" class="control-btn" onclick="czkClearCardSearch(\'{section_dom_id}\', \'{search_input_id}\')">Clear</button>'
+        "</div>"
+    )
+
+
 def _render_duplicate_cards(
     *,
     section_dom_id: str,
@@ -347,6 +402,7 @@ def _render_duplicate_cards(
     cards: list[str] = []
     for row in rows:
         keep_name = _escape(Path(row.file_to_keep).name or row.file_to_keep or "-")
+        search_index = _escape(_build_search_index(row))
         keep_html = _render_media_item(
             path_value=row.file_to_keep,
             media=media,
@@ -366,7 +422,7 @@ def _render_duplicate_cards(
             else '<p class="empty-inline">No files marked for removal.</p>'
         )
         cards.append(
-            '<details class="dup-card">'
+            f'<details class="dup-card" data-search="{search_index}">'
             '<summary class="dup-card-summary">'
             f'<span class="summary-chip"><strong>Group:</strong> {row.index}</span>'
             f'<span class="summary-chip"><strong>Keep File:</strong> {keep_name}</span>'
@@ -384,7 +440,12 @@ def _render_duplicate_cards(
             "</div>"
             "</details>"
         )
-    return f'<div id="{_escape(section_dom_id)}" class="dup-cards">{"".join(cards)}</div>'
+    return (
+        f'<div id="{_escape(section_dom_id)}" class="dup-cards">'
+        f'{"".join(cards)}'
+        '<p class="search-empty" hidden>No duplicate groups match this search.</p>'
+        "</div>"
+    )
 
 
 def _render_media_section(section: VizMediaSection, section_index: int) -> str:
@@ -399,6 +460,7 @@ def _render_media_section(section: VizMediaSection, section_index: int) -> str:
     """
     subtitle = f"Showing {section.shown_rows} of {section.total_rows} duplicate groups"
     section_dom_id = f"dup-cards-{section.media}-{section_index}"
+    search_input_id = f"{section_dom_id}-search"
     cards_html = _render_duplicate_cards(
         section_dom_id=section_dom_id,
         rows=section.visual_rows,
@@ -406,9 +468,11 @@ def _render_media_section(section: VizMediaSection, section_index: int) -> str:
         metadata_by_path=section.metadata_by_path,
     )
     controls_html = _render_card_controls(section_dom_id)
+    search_html = _render_search_controls(section_dom_id, search_input_id)
     if not section.visual_rows:
         cards_html = '<p class="empty">(no duplicate rows)</p>'
         controls_html = ""
+        search_html = ""
 
     return (
         '<section class="media-section">'
@@ -421,6 +485,7 @@ def _render_media_section(section: VizMediaSection, section_index: int) -> str:
         f"{_render_artifact_link(section.csv_path, 'CSV Report')}"
         "</div>"
         f'<p class="preview-count">{_escape(subtitle)}</p>'
+        f"{search_html}"
         f"{controls_html}"
         f"{cards_html}"
         "</section>"
@@ -477,6 +542,10 @@ def build_html_report(
         ".summary-label{font-weight:600;}"
         ".summary-value{font-weight:700;}"
         ".artifact-block{display:flex;flex-direction:column;gap:6px;margin:8px 0 12px;}"
+        ".search-controls{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 10px;}"
+        ".search-label{font-size:13px;font-weight:600;color:var(--accent);}"
+        ".search-input{min-width:280px;max-width:520px;flex:1;padding:7px 10px;border-radius:8px;border:1px solid var(--border);background:var(--surface-soft);color:var(--text);}"
+        ".search-input::placeholder{color:var(--text-muted);}"
         ".card-controls{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px;}"
         ".control-btn{border:1px solid var(--border);background:var(--button-bg);color:var(--text);border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer;}"
         ".control-btn:hover{background:var(--button-hover);}"
@@ -496,6 +565,7 @@ def build_html_report(
         ".media-link{font-size:12px;}"
         ".media-details{display:grid;gap:4px;font-size:12px;color:var(--text-muted);}"
         ".remove-items{display:grid;gap:8px;}"
+        ".search-empty{margin:0;padding:10px;border:1px dashed var(--border);border-radius:8px;background:var(--surface-muted);color:var(--text-muted);}"
         ".empty{padding:12px;border:1px dashed var(--border);border-radius:8px;background:var(--surface-muted);color:var(--text-muted);}"
         ".empty-inline{margin:0;padding:8px;border:1px dashed var(--border);border-radius:8px;background:var(--surface-muted);color:var(--text-muted);}"
         "@media (max-width:900px){"
@@ -538,6 +608,30 @@ def build_html_report(
         "  const container = document.getElementById(sectionId);"
         "  if (!container) { return; }"
         "  container.querySelectorAll('.dup-card').forEach((card) => { card.open = shouldOpen; });"
+        "}"
+        "function czkFilterCards(sectionId, inputId) {"
+        "  const container = document.getElementById(sectionId);"
+        "  const input = document.getElementById(inputId);"
+        "  if (!container || !input) { return; }"
+        "  const query = input.value.trim().toLowerCase();"
+        "  let matches = 0;"
+        "  container.querySelectorAll('.dup-card').forEach((card) => {"
+        "    const searchText = (card.dataset.search || '').toLowerCase();"
+        "    const matched = query === '' || searchText.includes(query);"
+        "    card.hidden = !matched;"
+        "    if (matched) {"
+        "      matches += 1;"
+        "      if (query !== '') { card.open = true; }"
+        "    }"
+        "  });"
+        "  const emptyMessage = container.querySelector('.search-empty');"
+        "  if (emptyMessage) { emptyMessage.hidden = matches !== 0; }"
+        "}"
+        "function czkClearCardSearch(sectionId, inputId) {"
+        "  const input = document.getElementById(inputId);"
+        "  if (!input) { return; }"
+        "  input.value = '';"
+        "  czkFilterCards(sectionId, inputId);"
         "}"
         "function czkOpenBackground(event) {"
         "  if (!event) { return true; }"
