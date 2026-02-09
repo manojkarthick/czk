@@ -59,6 +59,10 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
   - Runs dry-run scans (no deletion) for selected media
   - Generates JSON + CSV reports (same schema/contracts as other modes)
   - Generates a self-contained HTML report with inline image/video previews
+  - Uses collapsible duplicate-group cards (collapsed by default)
+  - Adds per-item actions: `Open` (file) and `Reveal` (parent folder)
+  - Shows metadata per item: `Size`, `Modified`, and `Resolution` (images when available)
+  - Includes `Show all` / `Collapse all` controls per media section
   - Attempts to auto-open the HTML report in the default browser
   - `--top N` limits duplicate groups rendered in the HTML visual preview
 
@@ -66,10 +70,12 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
 
 - Scans both images and videos (`--media both`)
 - Image mode uses:
-  - `--image-similarity High`
+  - `--similarity-preset High`
   - `--hash-size 32`
+  - `--hash-alg Gradient`
+  - `--image-filter Nearest`
 - Video mode uses:
-  - `--video-tolerance 10`
+  - `--tolerance 10`
 - Writes timestamped artifacts in shared temp folder by default:
   - `<system-temp>/czk-reports`
 - `--out-dir` overrides the default output location
@@ -77,9 +83,11 @@ High-level wrapper over `czkawka_cli` for image/video duplicate workflows with g
 ### Useful options
 
 - `--media {both,images,videos}`
-- `--hash-size {8,16,32,64}`
-- `--image-similarity {Minimal,VeryLow,Low,Medium,High,VeryHigh,None}`
-- `--video-tolerance 0..20`
+- `-c, --hash-size {8,16,32,64}`
+- `--hash-alg {Mean,Gradient,Blockhash,VertGradient,DoubleGradient,Median}` (image scans)
+- `--image-filter {Lanczos3,Nearest,Triangle,Faussian,Catmullrom}` (image scans)
+- `-s, --similarity-preset {Minimal,VeryLow,Low,Medium,High,VeryHigh,None}` (image scans)
+- `-t, --tolerance 0..20` (videos only)
 - `--top N` (preview groups to render; default 50)
 - `--out-dir <path>` (override default shared temp reports folder)
 - `--no-color` (force plain output; default is auto-color on TTY)
@@ -95,6 +103,12 @@ For `czk viz`, per run:
 
 - HTML: `<base-folder>-viz-<YYYYMMDD-HHMMSS>.html`
 - JSON/CSV artifacts are still generated per selected media type
+
+Viz preview details:
+
+- duplicate groups render as card blocks instead of table rows
+- card summary uses readable labels (`Group`, `Keep File`, `Marked for Removal`)
+- full filesystem paths are not shown as visible text in cards
 
 Default location when `--out-dir` is omitted:
 

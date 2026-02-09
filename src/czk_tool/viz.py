@@ -2,10 +2,19 @@ from __future__ import annotations
 
 import html
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from .counting import MediaType
 from .report import DuplicateVisualRow, MediaSummary
+
+
+@dataclass(frozen=True)
+class MediaItemMetadata:
+    size_bytes: int | None = None
+    modified_epoch: int | None = None
+    width: int | None = None
+    height: int | None = None
 
 
 @dataclass(frozen=True)
@@ -28,6 +37,7 @@ class VizMediaSection:
     visual_rows: list[DuplicateVisualRow]
     shown_rows: int
     total_rows: int
+    metadata_by_path: dict[str, MediaItemMetadata]
 
 
 def _escape(value: str) -> str:
@@ -63,6 +73,8 @@ def _path_exists(path_value: str) -> bool:
     Returns:
         `True` when path exists, otherwise `False`.
     """
+    if not path_value:
+        return False
     try:
         return Path(path_value).exists()
     except OSError:
@@ -78,8 +90,27 @@ def _path_uri(path_value: str) -> str | None:
     Returns:
         URI string when conversion succeeds, else `None`.
     """
+    if not path_value:
+        return None
     try:
         return Path(path_value).expanduser().resolve(strict=False).as_uri()
+    except ValueError:
+        return None
+
+
+def _parent_uri(path_value: str) -> str | None:
+    """Convert the parent directory of a path to a `file://` URI.
+
+    Args:
+        path_value: Filesystem path string.
+
+    Returns:
+        Parent folder URI when conversion succeeds, else `None`.
+    """
+    if not path_value:
+        return None
+    try:
+        return Path(path_value).expanduser().resolve(strict=False).parent.as_uri()
     except ValueError:
         return None
 
@@ -115,22 +146,136 @@ def _render_artifact_link(path: Path, label: str) -> str:
         return f"<div><strong>{_escape(label)}:</strong> <code>{path_text}</code></div>"
     return (
         f"<div><strong>{_escape(label)}:</strong> "
-        f"<a href=\"{_escape(uri)}\" target=\"_blank\" rel=\"noreferrer\"><code>{path_text}</code></a></div>"
+        f'<a href="{_escape(uri)}" target="_blank" rel="noreferrer"><code>{path_text}</code></a></div>'
     )
 
 
-def _render_media_item(path_value: str, media: MediaType) -> str:
+def _format_size(size_bytes: int | None) -> str:
+    """Format bytes into a compact human-readable string.
+
+    Args:
+        size_bytes: File size in bytes.
+
+    Returns:
+        Human-readable size string, or `-` when unavailable.
+    """
+    if size_bytes is None or size_bytes < 0:
+        return "-"
+    units = ["B", "KB", "MB", "GB", "TB"]
+    value = float(size_bytes)
+    unit_index = 0
+    while value >= 1024 and unit_index < len(units) - 1:
+        value /= 1024
+        unit_index += 1
+    if unit_index == 0:
+        return f"{int(value):,} {units[unit_index]}"
+    return f"{value:.1f} {units[unit_index]}"
+
+
+def _format_modified(modified_epoch: int | None) -> str:
+    """Format a unix epoch into local readable datetime text.
+
+    Args:
+        modified_epoch: Unix epoch seconds (or milliseconds).
+
+    Returns:
+        Formatted datetime string, or `-` when unavailable/invalid.
+    """
+    if modified_epoch is None or modified_epoch <= 0:
+        return "-"
+    timestamp = float(modified_epoch)
+    if timestamp > 10_000_000_000:
+        timestamp /= 1000
+    try:
+        return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+    except (OSError, OverflowError, ValueError):
+        return "-"
+
+
+def _format_resolution(media: MediaType, metadata: MediaItemMetadata | None) -> str:
+    """Format the resolution text for one media item.
+
+    Args:
+        media: Media class (`images` or `videos`).
+        metadata: Optional metadata payload for the item.
+
+    Returns:
+        Resolution text for images when available, otherwise `-`.
+    """
+    if media != "images" or metadata is None:
+        return "-"
+    if metadata.width is None or metadata.height is None:
+        return "-"
+    if metadata.width <= 0 or metadata.height <= 0:
+        return "-"
+    return f"{metadata.width}x{metadata.height}"
+
+
+def _render_media_metadata(media: MediaType, metadata: MediaItemMetadata | None) -> str:
+    """Render metadata lines for one media item.
+
+    Args:
+        media: Media class (`images` or `videos`).
+        metadata: Optional metadata payload for the item.
+
+    Returns:
+        HTML metadata fragment.
+    """
+    size_text = _escape(_format_size(None if metadata is None else metadata.size_bytes))
+    modified_text = _escape(_format_modified(None if metadata is None else metadata.modified_epoch))
+    resolution_text = _escape(_format_resolution(media, metadata))
+    return (
+        '<div class="media-details">'
+        f"<span><strong>Size:</strong> {size_text}</span>"
+        f"<span><strong>Modified:</strong> {modified_text}</span>"
+        f"<span><strong>Resolution:</strong> {resolution_text}</span>"
+        "</div>"
+    )
+
+
+def _render_media_actions(path_value: str) -> str:
+    """Render open/reveal links for one media item.
+
+    Args:
+        path_value: Filesystem path for the media item.
+
+    Returns:
+        HTML actions fragment, or an empty string when no actions are available.
+    """
+    open_uri = _path_uri(path_value)
+    reveal_uri = _parent_uri(path_value)
+    links: list[str] = []
+    if open_uri is not None:
+        links.append(
+            f'<a class="media-link" href="{_escape(open_uri)}" target="_blank" rel="noreferrer">Open</a>'
+        )
+    if reveal_uri is not None:
+        links.append(
+            f'<a class="media-link" href="{_escape(reveal_uri)}" target="_blank" rel="noreferrer">Reveal</a>'
+        )
+    if not links:
+        return ""
+    return '<div class="media-actions">' + "".join(links) + "</div>"
+
+
+def _render_media_item(
+    *,
+    path_value: str,
+    media: MediaType,
+    metadata_by_path: dict[str, MediaItemMetadata],
+) -> str:
     """Render one media preview card.
 
     Args:
         path_value: File path shown in the card.
         media: Media class (`images` or `videos`).
+        metadata_by_path: Metadata lookup keyed by absolute file path.
 
     Returns:
         HTML fragment representing the media item.
     """
-    file_name = Path(path_value).name or path_value
-    path_text = _escape(path_value)
+    metadata = metadata_by_path.get(path_value)
+    file_name = Path(path_value).name or "(missing file name)"
     file_name_text = _escape(file_name)
     uri = _path_uri(path_value)
 
@@ -145,19 +290,15 @@ def _render_media_item(path_value: str, media: MediaType) -> str:
                 "</video>"
             )
 
-    link_html = ""
-    if uri is not None:
-        link_html = (
-            f'<a class="media-link" href="{_escape(uri)}" target="_blank" rel="noreferrer">open</a>'
-        )
-
+    actions_html = _render_media_actions(path_value)
+    metadata_html = _render_media_metadata(media, metadata)
     return (
         '<div class="media-item">'
         f'<div class="media-preview">{preview_html}</div>'
         '<div class="media-meta">'
         f'<div class="media-name">{file_name_text}</div>'
-        f'<div class="media-path">{path_text}</div>'
-        f"{link_html}"
+        f"{actions_html}"
+        f"{metadata_html}"
         "</div>"
         "</div>"
     )
@@ -190,60 +331,106 @@ def _render_summary(summary: MediaSummary) -> str:
     return '<div class="summary-block">' + "".join(rendered_rows) + "</div>"
 
 
-def _render_duplicate_rows(rows: list[DuplicateVisualRow], media: MediaType) -> str:
-    """Render duplicate table rows for one media section.
+def _render_card_controls(section_dom_id: str) -> str:
+    """Render Show all / Collapse all controls for one media section.
 
     Args:
-        rows: Duplicate rows selected for visualization.
-        media: Media class for preview controls.
+        section_dom_id: DOM id for the duplicate-card container.
 
     Returns:
-        HTML table body content.
+        HTML controls fragment.
     """
-    rendered_rows: list[str] = []
+    return (
+        '<div class="card-controls">'
+        f'<button type="button" class="control-btn" onclick="czkToggleCards(\'{section_dom_id}\', true)">Show all</button>'
+        f'<button type="button" class="control-btn" onclick="czkToggleCards(\'{section_dom_id}\', false)">Collapse all</button>'
+        "</div>"
+    )
+
+
+def _render_duplicate_cards(
+    *,
+    section_dom_id: str,
+    rows: list[DuplicateVisualRow],
+    media: MediaType,
+    metadata_by_path: dict[str, MediaItemMetadata],
+) -> str:
+    """Render duplicate groups as collapsible cards.
+
+    Args:
+        section_dom_id: DOM id for the card container.
+        rows: Duplicate rows selected for visualization.
+        media: Media class for preview controls.
+        metadata_by_path: Metadata lookup keyed by absolute file path.
+
+    Returns:
+        HTML content containing all duplicate cards.
+    """
+    cards: list[str] = []
     for row in rows:
-        keep_html = _render_media_item(row.file_to_keep, media)
+        keep_name = _escape(Path(row.file_to_keep).name or row.file_to_keep or "-")
+        keep_html = _render_media_item(
+            path_value=row.file_to_keep,
+            media=media,
+            metadata_by_path=metadata_by_path,
+        )
         remove_items = "".join(
-            _render_media_item(remove_path, media) for remove_path in row.files_to_remove
+            _render_media_item(
+                path_value=remove_path,
+                media=media,
+                metadata_by_path=metadata_by_path,
+            )
+            for remove_path in row.files_to_remove
         )
-        removes_html = f'<div class="remove-items">{remove_items}</div>' if remove_items else "-"
-        rendered_rows.append(
-            "<tr>"
-            f"<td>{row.index}</td>"
-            f"<td>{keep_html}</td>"
-            f"<td>{row.remove_count}</td>"
-            f"<td>{removes_html}</td>"
-            "</tr>"
+        remove_html = (
+            f'<div class="remove-items">{remove_items}</div>'
+            if remove_items
+            else '<p class="empty-inline">No files marked for removal.</p>'
         )
-    return "".join(rendered_rows)
+        cards.append(
+            '<details class="dup-card">'
+            '<summary class="dup-card-summary">'
+            f'<span class="summary-chip"><strong>Group:</strong> {row.index}</span>'
+            f'<span class="summary-chip"><strong>Keep File:</strong> {keep_name}</span>'
+            f'<span class="summary-chip"><strong>Marked for Removal:</strong> {row.remove_count}</span>'
+            "</summary>"
+            '<div class="dup-card-body">'
+            '<div class="dup-card-section">'
+            "<h4>Keep File</h4>"
+            f"{keep_html}"
+            "</div>"
+            '<div class="dup-card-section">'
+            "<h4>Files to Remove</h4>"
+            f"{remove_html}"
+            "</div>"
+            "</div>"
+            "</details>"
+        )
+    return f'<div id="{_escape(section_dom_id)}" class="dup-cards">{"".join(cards)}</div>'
 
 
-def _render_media_section(section: VizMediaSection) -> str:
+def _render_media_section(section: VizMediaSection, section_index: int) -> str:
     """Render one media section in the HTML report.
 
     Args:
         section: Media-specific report content.
+        section_index: 1-based section index for stable DOM ids.
 
     Returns:
         HTML section markup.
     """
     subtitle = f"Showing {section.shown_rows} of {section.total_rows} duplicate groups"
-    if section.visual_rows:
-        table_html = (
-            '<div class="table-wrap"><table class="duplicate-table">'
-            "<thead>"
-            "<tr>"
-            "<th>index</th>"
-            "<th>file_to_keep</th>"
-            "<th>remove_count</th>"
-            "<th>files_to_remove</th>"
-            "</tr>"
-            "</thead>"
-            f"<tbody>{_render_duplicate_rows(section.visual_rows, section.media)}</tbody>"
-            "</table></div>"
-        )
-    else:
-        table_html = '<p class="empty">(no duplicate rows)</p>'
+    section_dom_id = f"dup-cards-{section.media}-{section_index}"
+    cards_html = _render_duplicate_cards(
+        section_dom_id=section_dom_id,
+        rows=section.visual_rows,
+        media=section.media,
+        metadata_by_path=section.metadata_by_path,
+    )
+    controls_html = _render_card_controls(section_dom_id)
+    if not section.visual_rows:
+        cards_html = '<p class="empty">(no duplicate rows)</p>'
+        controls_html = ""
 
     return (
         '<section class="media-section">'
@@ -256,7 +443,8 @@ def _render_media_section(section: VizMediaSection) -> str:
         f"{_render_artifact_link(section.csv_path, 'CSV Report')}"
         "</div>"
         f'<p class="preview-count">{_escape(subtitle)}</p>'
-        f"{table_html}"
+        f"{controls_html}"
+        f"{cards_html}"
         "</section>"
     )
 
@@ -276,7 +464,9 @@ def build_html_report(
         Full HTML content.
     """
     media_labels = ", ".join(run_context.media_targets)
-    rendered_sections = "".join(_render_media_section(section) for section in media_sections)
+    rendered_sections = "".join(
+        _render_media_section(section, index) for index, section in enumerate(media_sections, start=1)
+    )
     return (
         "<!doctype html>"
         '<html lang="en">'
@@ -290,6 +480,7 @@ def build_html_report(
         "h1{margin:0 0 16px;font-size:28px;}"
         "h2{margin:0 0 12px;font-size:20px;}"
         "h3{margin:0 0 8px;font-size:14px;color:#243447;text-transform:uppercase;letter-spacing:0.04em;}"
+        "h4{margin:0 0 8px;font-size:14px;color:#243447;}"
         ".overview,.media-section{background:#fff;border:1px solid #dde3ea;border-radius:12px;padding:16px 18px;margin-bottom:16px;}"
         ".overview-grid{display:grid;grid-template-columns:220px 1fr;gap:8px 12px;align-items:start;}"
         ".label{font-weight:700;color:#0f2742;}"
@@ -301,34 +492,40 @@ def build_html_report(
         ".summary-label{font-weight:600;}"
         ".summary-value{font-weight:700;}"
         ".artifact-block{display:flex;flex-direction:column;gap:6px;margin:8px 0 12px;}"
-        ".table-wrap{overflow:auto;border:1px solid #d7dee8;border-radius:10px;}"
-        ".duplicate-table{width:100%;border-collapse:collapse;min-width:980px;}"
-        ".duplicate-table th,.duplicate-table td{padding:10px;border-bottom:1px solid #e6ebf1;vertical-align:top;text-align:left;}"
-        ".duplicate-table th{background:#f7f9fc;font-weight:700;position:sticky;top:0;}"
+        ".card-controls{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 12px;}"
+        ".control-btn{border:1px solid #ccd5e1;background:#f8fafc;color:#0f2742;border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer;}"
+        ".control-btn:hover{background:#edf2f8;}"
+        ".dup-cards{display:grid;gap:10px;}"
+        ".dup-card{border:1px solid #d7dee8;border-radius:10px;background:#fdfefe;overflow:hidden;}"
+        ".dup-card-summary{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 12px;cursor:pointer;background:#f6f9fc;}"
+        ".summary-chip{border:1px solid #d7dee8;border-radius:999px;padding:3px 8px;background:#ffffff;font-size:12px;line-height:1.4;}"
+        ".dup-card-body{padding:12px;display:grid;gap:12px;}"
+        ".dup-card-section{display:grid;gap:8px;}"
         ".media-item{display:grid;grid-template-columns:160px minmax(220px,1fr);gap:10px;padding:8px;border:1px solid #e3e8ef;border-radius:8px;background:#fcfdff;}"
         ".media-preview{width:160px;height:110px;background:#f0f3f7;border-radius:6px;display:flex;align-items:center;justify-content:center;overflow:hidden;}"
         ".media-preview img,.media-preview video{width:100%;height:100%;object-fit:cover;display:block;}"
         ".preview-unavailable{font-size:12px;color:#44566a;padding:8px;text-align:center;}"
-        ".media-meta{min-width:0;}"
+        ".media-meta{min-width:0;display:grid;gap:6px;align-content:start;}"
         ".media-name{font-weight:700;word-break:break-word;}"
-        ".media-path{font-size:12px;color:#44566a;word-break:break-word;margin:4px 0;}"
+        ".media-actions{display:flex;gap:10px;flex-wrap:wrap;}"
         ".media-link{font-size:12px;}"
+        ".media-details{display:grid;gap:4px;font-size:12px;color:#33495f;}"
         ".remove-items{display:grid;gap:8px;}"
         ".empty{padding:12px;border:1px dashed #b8c4d3;border-radius:8px;background:#f9fbfd;color:#44566a;}"
+        ".empty-inline{margin:0;padding:8px;border:1px dashed #b8c4d3;border-radius:8px;background:#f9fbfd;color:#44566a;}"
         "@media (max-width:900px){"
         "main{padding:12px;}"
         ".overview-grid{grid-template-columns:1fr;}"
         ".media-item{grid-template-columns:1fr;}"
         ".media-preview{width:100%;height:220px;}"
-        ".duplicate-table{min-width:760px;}"
         "}"
         "</style>"
         "</head>"
         "<body>"
         "<main>"
-        "<section class=\"overview\">"
+        '<section class="overview">'
         "<h1>czk viz report</h1>"
-        "<div class=\"overview-grid\">"
+        '<div class="overview-grid">'
         f'<div class="label">Run Mode</div><div class="value">{_escape(run_context.run_mode)}</div>'
         f'<div class="label">Target Folder</div><div class="value">{_escape(str(run_context.target_dir))}</div>'
         f'<div class="label">Reports Folder</div><div class="value">{_escape(str(run_context.out_dir))}</div>'
@@ -338,6 +535,13 @@ def build_html_report(
         "</section>"
         f"{rendered_sections}"
         "</main>"
+        "<script>"
+        "function czkToggleCards(sectionId, shouldOpen) {"
+        "  const container = document.getElementById(sectionId);"
+        "  if (!container) { return; }"
+        "  container.querySelectorAll('.dup-card').forEach((card) => { card.open = shouldOpen; });"
+        "}"
+        "</script>"
         "</body>"
         "</html>"
     )

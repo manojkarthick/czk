@@ -21,6 +21,8 @@ class CliArgTests(unittest.TestCase):
         self.assertEqual(args.directory, ".")
         self.assertEqual(args.media, "both")
         self.assertEqual(args.hash_size, 32)
+        self.assertEqual(args.hash_alg, "Gradient")
+        self.assertEqual(args.image_filter, "Nearest")
         self.assertEqual(args.image_similarity, "High")
         self.assertEqual(args.video_tolerance, 10)
         self.assertEqual(args.top, 50)
@@ -34,7 +36,7 @@ class CliArgTests(unittest.TestCase):
                 "/tmp/data",
                 "--media",
                 "videos",
-                "--video-tolerance",
+                "-t",
                 "20",
                 "--top",
                 "7",
@@ -59,6 +61,8 @@ class CliArgTests(unittest.TestCase):
         self.assertEqual(args.directory, ".")
         self.assertEqual(args.media, "both")
         self.assertEqual(args.hash_size, 32)
+        self.assertEqual(args.hash_alg, "Gradient")
+        self.assertEqual(args.image_filter, "Nearest")
         self.assertEqual(args.video_tolerance, 10)
         self.assertIsNone(args.out_dir)
         self.assertFalse(args.no_color)
@@ -73,6 +77,8 @@ class CliArgTests(unittest.TestCase):
         self.assertEqual(args.directory, ".")
         self.assertEqual(args.media, "both")
         self.assertEqual(args.hash_size, 32)
+        self.assertEqual(args.hash_alg, "Gradient")
+        self.assertEqual(args.image_filter, "Nearest")
         self.assertEqual(args.image_similarity, "High")
         self.assertEqual(args.video_tolerance, 10)
         self.assertEqual(args.top, 50)
@@ -86,8 +92,14 @@ class CliArgTests(unittest.TestCase):
                 "/tmp/data",
                 "--media",
                 "images",
-                "--hash-size",
+                "-c",
                 "64",
+                "--hash-alg",
+                "Blockhash",
+                "--image-filter",
+                "Catmullrom",
+                "-s",
+                "Low",
                 "--out-dir",
                 "/tmp/out",
             ]
@@ -96,6 +108,9 @@ class CliArgTests(unittest.TestCase):
         self.assertEqual(args.directory, "/tmp/data")
         self.assertEqual(args.media, "images")
         self.assertEqual(args.hash_size, 64)
+        self.assertEqual(args.hash_alg, "Blockhash")
+        self.assertEqual(args.image_filter, "Catmullrom")
+        self.assertEqual(args.image_similarity, "Low")
         self.assertEqual(args.out_dir, "/tmp/out")
 
     def test_no_color_flag(self) -> None:
@@ -104,7 +119,7 @@ class CliArgTests(unittest.TestCase):
 
     def test_invalid_video_tolerance(self) -> None:
         with self.assertRaises(SystemExit):
-            parse_args(["test", "--video-tolerance", "21"])
+            parse_args(["test", "--tolerance", "21"])
 
     def test_main_does_not_render_combined_summary(self) -> None:
         with patch.object(cli, "ensure_czkawka_cli", return_value="/opt/homebrew/bin/czkawka_cli"), patch.object(
@@ -134,6 +149,8 @@ class CliArgTests(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertEqual(run_media_mock.call_count, 1)
             self.assertEqual(run_media_mock.call_args.kwargs["mode"], "analyze")
+            self.assertEqual(run_media_mock.call_args.kwargs["hash_alg"], "Gradient")
+            self.assertEqual(run_media_mock.call_args.kwargs["image_filter"], "Nearest")
             self.assertEqual(build_expanded_mock.call_count, 1)
             launch_mock.assert_called_once()
             self.assertIn("duplicate_json_paths", launch_mock.call_args.kwargs)
@@ -166,6 +183,8 @@ class CliArgTests(unittest.TestCase):
         ) as scan_mock, patch.object(
             cli, "build_visual_rows_from_csv", return_value=([], 0, 0)
         ), patch.object(
+            cli, "load_duplicate_groups", return_value=[]
+        ), patch.object(
             cli, "build_html_report", return_value="<html><body>report</body></html>"
         ), patch.object(
             cli.webbrowser, "open", return_value=True
@@ -176,6 +195,8 @@ class CliArgTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(scan_mock.call_count, 1)
+            self.assertEqual(scan_mock.call_args.kwargs["hash_alg"], "Gradient")
+            self.assertEqual(scan_mock.call_args.kwargs["image_filter"], "Nearest")
             browser_open_mock.assert_called_once()
             run_header_mock.assert_not_called()
 

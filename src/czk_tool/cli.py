@@ -8,7 +8,7 @@ import webbrowser
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Literal, Sequence, cast
+from typing import Any, Literal, Sequence, cast
 
 from .counting import MediaType, count_media_files
 from .czkawka import (
@@ -33,7 +33,7 @@ from .report import (
     load_duplicate_groups,
     write_csv,
 )
-from .viz import VizMediaSection, VizRunContext, build_html_report
+from .viz import MediaItemMetadata, VizMediaSection, VizRunContext, build_html_report
 
 Mode = Literal["test", "execute", "analyze", "viz"]
 RenderMode = Literal["test", "execute", "analyze"]
@@ -48,6 +48,23 @@ IMAGE_SIMILARITY_CHOICES = (
     "None",
 )
 
+IMAGE_HASH_ALG_CHOICES = (
+    "Mean",
+    "Gradient",
+    "Blockhash",
+    "VertGradient",
+    "DoubleGradient",
+    "Median",
+)
+
+IMAGE_FILTER_CHOICES = (
+    "Lanczos3",
+    "Nearest",
+    "Triangle",
+    "Faussian",
+    "Catmullrom",
+)
+
 
 @dataclass(frozen=True)
 class _MediaRunResult:
@@ -56,6 +73,50 @@ class _MediaRunResult:
     summary: MediaSummary
     json_path: Path
     csv_path: Path
+
+
+def _optional_int(value: Any) -> int | None:
+    """Convert a raw numeric-like value to an integer.
+
+    Args:
+        value: Arbitrary value from Czkawka JSON payload.
+
+    Returns:
+        Parsed integer when numeric, otherwise `None`.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return None
+
+
+def _build_viz_metadata(
+    groups: list[list[dict[str, Any]]],
+) -> dict[str, MediaItemMetadata]:
+    """Build a path-indexed metadata lookup from duplicate groups.
+
+    Args:
+        groups: Duplicate groups loaded from Czkawka pretty JSON output.
+
+    Returns:
+        Mapping from media path to metadata fields used by HTML cards.
+    """
+    metadata_by_path: dict[str, MediaItemMetadata] = {}
+    for group in groups:
+        for item in group:
+            path_value = item.get("path")
+            if not isinstance(path_value, str) or not path_value:
+                continue
+            metadata_by_path[path_value] = MediaItemMetadata(
+                size_bytes=_optional_int(item.get("size")),
+                modified_epoch=_optional_int(item.get("modified_date")),
+                width=_optional_int(item.get("width")),
+                height=_optional_int(item.get("height")),
+            )
+    return metadata_by_path
 
 
 def _positive_int(value: str) -> int:
@@ -108,6 +169,7 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         help="Select which media scans to run.",
     )
     parser.add_argument(
+        "-c",
         "--hash-size",
         type=int,
         choices=(8, 16, 32, 64),
@@ -115,16 +177,34 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         help="Image perceptual hash size.",
     )
     parser.add_argument(
-        "--image-similarity",
+        "-g",
+        "--hash-alg",
+        choices=IMAGE_HASH_ALG_CHOICES,
+        default="Gradient",
+        help="Image hash algorithm passed to Czkawka image mode.",
+    )
+    parser.add_argument(
+        "-z",
+        "--image-filter",
+        choices=IMAGE_FILTER_CHOICES,
+        default="Nearest",
+        help="Image filter passed to Czkawka image mode.",
+    )
+    parser.add_argument(
+        "-s",
+        "--similarity-preset",
+        dest="image_similarity",
         choices=IMAGE_SIMILARITY_CHOICES,
         default="High",
         help="Image similarity preset passed to Czkawka.",
     )
     parser.add_argument(
-        "--video-tolerance",
+        "-t",
+        "--tolerance",
+        dest="video_tolerance",
         type=_video_tolerance,
         default=10,
-        help="Video tolerance in range [0, 20].",
+        help="Tolerance in range [0, 20] (videos only).",
     )
     parser.add_argument(
         "--top",
@@ -307,6 +387,8 @@ def _scan_one_media(
     base_name: str,
     czkawka_executable: str,
     hash_size: int,
+    hash_alg: str,
+    image_filter: str,
     image_similarity: str,
     video_tolerance: int,
     dry_run: bool,
@@ -322,6 +404,8 @@ def _scan_one_media(
         base_name: Sanitized target folder name.
         czkawka_executable: Path to Czkawka CLI binary.
         hash_size: Image hash size.
+        hash_alg: Image hash algorithm preset.
+        image_filter: Image filter algorithm.
         image_similarity: Image similarity preset.
         video_tolerance: Video tolerance value.
         dry_run: Whether Czkawka should run with `--dry-run`.
@@ -346,6 +430,8 @@ def _scan_one_media(
         dry_run=dry_run,
         image_similarity=image_similarity,
         hash_size=hash_size,
+        hash_alg=hash_alg,
+        image_filter=image_filter,
         video_tolerance=video_tolerance,
     )
 
@@ -376,6 +462,8 @@ def _run_one_media(
     base_name: str,
     czkawka_executable: str,
     hash_size: int,
+    hash_alg: str,
+    image_filter: str,
     image_similarity: str,
     video_tolerance: int,
     top: int,
@@ -392,6 +480,8 @@ def _run_one_media(
         base_name: Sanitized target folder name.
         czkawka_executable: Path to Czkawka CLI binary.
         hash_size: Image hash size.
+        hash_alg: Image hash algorithm preset.
+        image_filter: Image filter algorithm.
         image_similarity: Image similarity preset.
         video_tolerance: Video tolerance value.
         top: Preview row limit for terminal output.
@@ -409,6 +499,8 @@ def _run_one_media(
         base_name=base_name,
         czkawka_executable=czkawka_executable,
         hash_size=hash_size,
+        hash_alg=hash_alg,
+        image_filter=image_filter,
         image_similarity=image_similarity,
         video_tolerance=video_tolerance,
         dry_run=dry_run,
@@ -440,6 +532,8 @@ def _run_viz(
     base_name: str,
     czkawka_executable: str,
     hash_size: int,
+    hash_alg: str,
+    image_filter: str,
     image_similarity: str,
     video_tolerance: int,
     top: int,
@@ -455,6 +549,8 @@ def _run_viz(
         base_name: Sanitized target folder name.
         czkawka_executable: Path to Czkawka CLI binary.
         hash_size: Image hash size.
+        hash_alg: Image hash algorithm preset.
+        image_filter: Image filter algorithm.
         image_similarity: Image similarity preset.
         video_tolerance: Video tolerance value.
         top: Visual row limit for HTML output.
@@ -473,11 +569,15 @@ def _run_viz(
             base_name=base_name,
             czkawka_executable=czkawka_executable,
             hash_size=hash_size,
+            hash_alg=hash_alg,
+            image_filter=image_filter,
             image_similarity=image_similarity,
             video_tolerance=video_tolerance,
             dry_run=True,
             report_mode="test",
         )
+        groups = load_duplicate_groups(result.json_path)
+        metadata_by_path = _build_viz_metadata(groups)
         visual_rows, total_rows, shown_rows = build_visual_rows_from_csv(result.csv_path, top=top)
         sections.append(
             VizMediaSection(
@@ -490,6 +590,7 @@ def _run_viz(
                 visual_rows=visual_rows,
                 shown_rows=shown_rows,
                 total_rows=total_rows,
+                metadata_by_path=metadata_by_path,
             )
         )
 
@@ -536,6 +637,8 @@ def _run_analyze(
     base_name: str,
     czkawka_executable: str,
     hash_size: int,
+    hash_alg: str,
+    image_filter: str,
     image_similarity: str,
     video_tolerance: int,
     top: int,
@@ -551,6 +654,8 @@ def _run_analyze(
         base_name: Sanitized target folder name.
         czkawka_executable: Path to Czkawka CLI binary.
         hash_size: Image hash size.
+        hash_alg: Image hash algorithm preset.
+        image_filter: Image filter algorithm.
         image_similarity: Image similarity preset.
         video_tolerance: Video tolerance value.
         top: Preview row limit for terminal output.
@@ -574,6 +679,8 @@ def _run_analyze(
             base_name=base_name,
             czkawka_executable=czkawka_executable,
             hash_size=hash_size,
+            hash_alg=hash_alg,
+            image_filter=image_filter,
             image_similarity=image_similarity,
             video_tolerance=video_tolerance,
             top=top,
@@ -631,6 +738,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 base_name=base_name,
                 czkawka_executable=czkawka_executable,
                 hash_size=args.hash_size,
+                hash_alg=args.hash_alg,
+                image_filter=args.image_filter,
                 image_similarity=args.image_similarity,
                 video_tolerance=args.video_tolerance,
                 top=args.top,
@@ -654,6 +763,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 base_name=base_name,
                 czkawka_executable=czkawka_executable,
                 hash_size=args.hash_size,
+                hash_alg=args.hash_alg,
+                image_filter=args.image_filter,
                 image_similarity=args.image_similarity,
                 video_tolerance=args.video_tolerance,
                 top=args.top,
@@ -670,6 +781,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 base_name=base_name,
                 czkawka_executable=czkawka_executable,
                 hash_size=args.hash_size,
+                hash_alg=args.hash_alg,
+                image_filter=args.image_filter,
                 image_similarity=args.image_similarity,
                 video_tolerance=args.video_tolerance,
                 top=args.top,

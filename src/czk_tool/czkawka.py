@@ -34,6 +34,8 @@ def build_czkawka_command(
     dry_run: bool,
     image_similarity: str,
     hash_size: int,
+    hash_alg: str,
+    image_filter: str,
     video_tolerance: int,
 ) -> list[str]:
     """Build the Czkawka CLI command for a single media scan.
@@ -46,6 +48,8 @@ def build_czkawka_command(
         dry_run: Whether to run in dry-run mode.
         image_similarity: Similarity preset for image scanning.
         hash_size: Perceptual hash size for images.
+        hash_alg: Hash algorithm for image scanning.
+        image_filter: Image filter used for hashing.
         video_tolerance: Similarity tolerance for video scanning.
 
     Returns:
@@ -61,6 +65,10 @@ def build_czkawka_command(
             image_similarity,
             "-c",
             str(hash_size),
+            "-g",
+            hash_alg,
+            "-z",
+            image_filter,
             "-D",
             "AEB",
             "-p",

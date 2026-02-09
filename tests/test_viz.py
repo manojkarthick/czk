@@ -10,11 +10,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from czk_tool.report import DuplicateRow, DuplicateVisualRow, MediaSummary, build_visual_rows_from_csv, write_csv
-from czk_tool.viz import VizMediaSection, VizRunContext, build_html_report
+from czk_tool.viz import MediaItemMetadata, VizMediaSection, VizRunContext, build_html_report
 
 
 class VizReportTests(unittest.TestCase):
-    def test_build_html_report_includes_sections_and_media_tags(self) -> None:
+    def test_build_html_report_uses_cards_controls_and_friendly_labels(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             temp_root = Path(tmp_dir)
             image_keep = temp_root / "keep-image.jpg"
@@ -56,6 +56,20 @@ class VizReportTests(unittest.TestCase):
                     ],
                     shown_rows=1,
                     total_rows=1,
+                    metadata_by_path={
+                        str(image_keep): MediaItemMetadata(
+                            size_bytes=2048,
+                            modified_epoch=1_700_000_000,
+                            width=640,
+                            height=480,
+                        ),
+                        str(image_remove): MediaItemMetadata(
+                            size_bytes=1024,
+                            modified_epoch=1_700_000_010,
+                            width=320,
+                            height=240,
+                        ),
+                    },
                 ),
                 VizMediaSection(
                     media="videos",
@@ -79,6 +93,16 @@ class VizReportTests(unittest.TestCase):
                     ],
                     shown_rows=1,
                     total_rows=1,
+                    metadata_by_path={
+                        str(video_keep): MediaItemMetadata(
+                            size_bytes=10_000,
+                            modified_epoch=1_700_000_020,
+                        ),
+                        str(video_remove): MediaItemMetadata(
+                            size_bytes=8_000,
+                            modified_epoch=1_700_000_030,
+                        ),
+                    },
                 ),
             ]
 
@@ -93,12 +117,32 @@ class VizReportTests(unittest.TestCase):
         self.assertIn("IMAGES | DRY RUN", html_report)
         self.assertIn("VIDEOS | DRY RUN", html_report)
         self.assertIn("Scanner Exit Code: 0", html_report)
+        self.assertIn("Show all", html_report)
+        self.assertIn("Collapse all", html_report)
+        self.assertIn("Group:</strong>", html_report)
+        self.assertIn("Keep File", html_report)
+        self.assertIn("Files to Remove", html_report)
+        self.assertIn("Marked for Removal", html_report)
+        self.assertIn('class="dup-card"', html_report)
+        self.assertNotIn('class="duplicate-table"', html_report)
+        self.assertNotIn("file_to_keep", html_report)
+        self.assertNotIn("files_to_remove", html_report)
+        self.assertNotIn("remove_count", html_report)
+        self.assertNotIn('class="dup-card" open', html_report)
+        self.assertIn("querySelectorAll('.dup-card')", html_report)
         self.assertIn("<img ", html_report)
         self.assertIn("<video controls preload=\"metadata\" muted>", html_report)
+        self.assertIn(">Open</a>", html_report)
+        self.assertIn(">Reveal</a>", html_report)
+        self.assertIn("Size:</strong>", html_report)
+        self.assertIn("Modified:</strong>", html_report)
+        self.assertIn("Resolution:</strong>", html_report)
+        self.assertIn("640x480", html_report)
+        self.assertIn("Resolution:</strong> -", html_report)
         self.assertIn("images.json", html_report)
         self.assertIn("videos.csv", html_report)
 
-    def test_build_html_report_honors_top_and_escapes_paths(self) -> None:
+    def test_build_html_report_honors_top_and_hides_path_row(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             temp_root = Path(tmp_dir)
             csv_path = temp_root / "images.csv"
@@ -135,6 +179,26 @@ class VizReportTests(unittest.TestCase):
                 visual_rows=visual_rows,
                 shown_rows=shown_rows,
                 total_rows=total_rows,
+                metadata_by_path={
+                    "/tmp/folder/<bad>&keep.jpg": MediaItemMetadata(
+                        size_bytes=1234,
+                        modified_epoch=1_700_000_000,
+                        width=1920,
+                        height=1080,
+                    ),
+                    "/tmp/folder/remove 1.jpg": MediaItemMetadata(
+                        size_bytes=1200,
+                        modified_epoch=1_700_000_100,
+                        width=800,
+                        height=600,
+                    ),
+                    "/tmp/folder/remove 2.jpg": MediaItemMetadata(
+                        size_bytes=1100,
+                        modified_epoch=1_700_000_200,
+                        width=640,
+                        height=480,
+                    ),
+                },
             )
             report = build_html_report(
                 run_context=VizRunContext(
@@ -150,8 +214,50 @@ class VizReportTests(unittest.TestCase):
         self.assertIn("Showing 1 of 2 duplicate groups", report)
         self.assertIn("&lt;bad&gt;&amp;keep.jpg", report)
         self.assertNotIn("skip-me.jpg", report)
-        self.assertIn("Preview unavailable", report)
+        self.assertIn("Resolution:</strong> 1920x1080", report)
+        self.assertNotIn('class="media-path"', report)
         self.assertIn(str(csv_path), report)
+
+    def test_build_html_report_omits_item_actions_when_path_is_blank(self) -> None:
+        report = build_html_report(
+            run_context=VizRunContext(
+                run_mode="VIZ (DRY RUN)",
+                target_dir=Path("/tmp"),
+                out_dir=Path("/tmp"),
+                timestamp="20260209-091000",
+                media_targets=["images"],
+            ),
+            media_sections=[
+                VizMediaSection(
+                    media="images",
+                    command_preview="czkawka_cli image --dry-run",
+                    exit_code=0,
+                    summary=MediaSummary(
+                        total_found=0,
+                        duplicate_groups=1,
+                        duplicates_to_remove=0,
+                        after_remove_estimate=0,
+                    ),
+                    json_path=Path("/tmp/images.json"),
+                    csv_path=Path("/tmp/images.csv"),
+                    visual_rows=[
+                        DuplicateVisualRow(
+                            index=1,
+                            file_to_keep="",
+                            files_to_remove=[],
+                            remove_count=0,
+                        )
+                    ],
+                    shown_rows=1,
+                    total_rows=1,
+                    metadata_by_path={},
+                )
+            ],
+        )
+
+        self.assertIn("Preview unavailable", report)
+        self.assertNotIn(">Open</a>", report)
+        self.assertNotIn(">Reveal</a>", report)
 
 
 if __name__ == "__main__":
