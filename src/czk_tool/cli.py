@@ -5,6 +5,7 @@ import re
 import sys
 import tempfile
 import webbrowser
+from importlib.metadata import version
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
@@ -282,6 +283,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="czk",
         description="Run Czkawka duplicate workflows for images/videos with CSV reports.",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {version('czk-tool')}",
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
 
