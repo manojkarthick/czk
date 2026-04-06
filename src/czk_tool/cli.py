@@ -38,15 +38,43 @@ from .viz import MediaItemMetadata, VizMediaSection, VizRunContext, build_html_r
 Mode = Literal["test", "execute", "analyze", "viz"]
 RenderMode = Literal["test", "execute", "analyze"]
 
-IMAGE_SIMILARITY_CHOICES = (
-    "Minimal",
-    "VeryLow",
-    "Low",
-    "Medium",
-    "High",
-    "VeryHigh",
-    "None",
-)
+# czkawka v11.0.0 (PR #1760) replaced named similarity presets with a raw numeric
+# --max-difference flag (hamming distance, 0-40). We keep the preset names for a
+# friendlier CLI and map them to the original SIMILAR_VALUES table, which varies by
+# hash size (e.g. "High" = 2 for hash_size 8, but 20 for hash_size 64).
+# Source: https://github.com/qarmin/czkawka/blob/28ae8bae1ebe9858b395364386aefba6bcd40c45/czkawka_core/src/tools/similar_images/mod.rs#L26-L31
+# Ordered from most strict to most lenient.
+_SIMILARITY_PRESETS: list[dict[str, int]] = [
+    {"name": "VeryHigh",  "hash_8": 1,  "hash_16": 2,  "hash_32": 4,  "hash_64": 6},
+    {"name": "High",      "hash_8": 2,  "hash_16": 5,  "hash_32": 10, "hash_64": 20},
+    {"name": "Medium",    "hash_8": 5,  "hash_16": 15, "hash_32": 20, "hash_64": 40},
+    {"name": "Small",     "hash_8": 7,  "hash_16": 30, "hash_32": 40, "hash_64": 40},
+    {"name": "VerySmall", "hash_8": 14, "hash_16": 40, "hash_32": 40, "hash_64": 40},
+    {"name": "Minimal",   "hash_8": 40, "hash_16": 40, "hash_32": 40, "hash_64": 40},
+]
+
+_SIMILARITY_LOOKUP: dict[tuple[str, int], int] = {
+    (p["name"], size): p[f"hash_{size}"]
+    for p in _SIMILARITY_PRESETS
+    for size in (8, 16, 32, 64)
+}
+
+IMAGE_SIMILARITY_CHOICES = ("Original", *(p["name"] for p in _SIMILARITY_PRESETS))
+
+
+def _resolve_similarity(preset: str, hash_size: int) -> int:
+    """Convert a named similarity preset and hash size to a numeric max-difference value.
+
+    Args:
+        preset: Similarity preset name.
+        hash_size: Perceptual hash size (8, 16, 32, or 64).
+
+    Returns:
+        Numeric max-difference value for czkawka_cli ``-s`` flag.
+    """
+    if preset == "Original":
+        return 0
+    return _SIMILARITY_LOOKUP[(preset, hash_size)]
 
 IMAGE_HASH_ALG_CHOICES = (
     "Mean",
@@ -211,7 +239,7 @@ def _add_common_arguments(parser: argparse.ArgumentParser) -> None:
         dest="image_similarity",
         choices=IMAGE_SIMILARITY_CHOICES,
         default="High",
-        help="Image similarity preset passed to Czkawka.",
+        help="Image similarity preset (maps to a max-difference value that depends on hash size).",
     )
     parser.add_argument(
         "-t",
@@ -410,7 +438,7 @@ def _scan_one_media(
     hash_size: int,
     hash_alg: str,
     image_filter: str,
-    image_similarity: str,
+    image_similarity: int,
     video_tolerance: int,
     dry_run: bool,
     report_mode: Literal["test", "execute"],
@@ -427,7 +455,7 @@ def _scan_one_media(
         hash_size: Image hash size.
         hash_alg: Image hash algorithm preset.
         image_filter: Image filter algorithm.
-        image_similarity: Image similarity preset.
+        image_similarity: Image max difference value (0-40).
         video_tolerance: Video tolerance value.
         dry_run: Whether Czkawka should run with `--dry-run`.
         report_mode: Row projection mode used for CSV normalization.
@@ -485,7 +513,7 @@ def _run_one_media(
     hash_size: int,
     hash_alg: str,
     image_filter: str,
-    image_similarity: str,
+    image_similarity: int,
     video_tolerance: int,
     top: int,
 ) -> tuple[Path, Path]:
@@ -503,7 +531,7 @@ def _run_one_media(
         hash_size: Image hash size.
         hash_alg: Image hash algorithm preset.
         image_filter: Image filter algorithm.
-        image_similarity: Image similarity preset.
+        image_similarity: Image max difference value (0-40).
         video_tolerance: Video tolerance value.
         top: Preview row limit for terminal output.
 
@@ -555,7 +583,7 @@ def _run_viz(
     hash_size: int,
     hash_alg: str,
     image_filter: str,
-    image_similarity: str,
+    image_similarity: int,
     video_tolerance: int,
     top: int,
 ) -> int:
@@ -572,7 +600,7 @@ def _run_viz(
         hash_size: Image hash size.
         hash_alg: Image hash algorithm preset.
         image_filter: Image filter algorithm.
-        image_similarity: Image similarity preset.
+        image_similarity: Image max difference value (0-40).
         video_tolerance: Video tolerance value.
         top: Visual row limit for HTML output.
 
@@ -660,7 +688,7 @@ def _run_analyze(
     hash_size: int,
     hash_alg: str,
     image_filter: str,
-    image_similarity: str,
+    image_similarity: int,
     video_tolerance: int,
     top: int,
 ) -> int:
@@ -677,7 +705,7 @@ def _run_analyze(
         hash_size: Image hash size.
         hash_alg: Image hash algorithm preset.
         image_filter: Image filter algorithm.
-        image_similarity: Image similarity preset.
+        image_similarity: Image max difference value (0-40).
         video_tolerance: Video tolerance value.
         top: Preview row limit for terminal output.
 
@@ -746,6 +774,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         out_dir.mkdir(parents=True, exist_ok=True)
 
         media_targets = _selected_media(args.media)
+        image_similarity = _resolve_similarity(args.image_similarity, args.hash_size)
         preview_limit = _resolve_preview_limit(args.top, args.show_all)
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         base_name = _sanitize_name(target_dir.name)
@@ -762,7 +791,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 hash_size=args.hash_size,
                 hash_alg=args.hash_alg,
                 image_filter=args.image_filter,
-                image_similarity=args.image_similarity,
+                image_similarity=image_similarity,
                 video_tolerance=args.video_tolerance,
                 top=preview_limit,
             )
@@ -787,7 +816,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 hash_size=args.hash_size,
                 hash_alg=args.hash_alg,
                 image_filter=args.image_filter,
-                image_similarity=args.image_similarity,
+                image_similarity=image_similarity,
                 video_tolerance=args.video_tolerance,
                 top=preview_limit,
             )
@@ -805,7 +834,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 hash_size=args.hash_size,
                 hash_alg=args.hash_alg,
                 image_filter=args.image_filter,
-                image_similarity=args.image_similarity,
+                image_similarity=image_similarity,
                 video_tolerance=args.video_tolerance,
                 top=preview_limit,
             )

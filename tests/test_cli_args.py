@@ -108,7 +108,7 @@ class CliArgTests(unittest.TestCase):
                 "--image-filter",
                 "Catmullrom",
                 "-s",
-                "Low",
+                "Small",
                 "--out-dir",
                 "/tmp/out",
             ]
@@ -119,7 +119,7 @@ class CliArgTests(unittest.TestCase):
         self.assertEqual(args.hash_size, 64)
         self.assertEqual(args.hash_alg, "Blockhash")
         self.assertEqual(args.image_filter, "Catmullrom")
-        self.assertEqual(args.image_similarity, "Low")
+        self.assertEqual(args.image_similarity, "Small")
         self.assertEqual(args.out_dir, "/tmp/out")
 
     def test_no_color_flag(self) -> None:
