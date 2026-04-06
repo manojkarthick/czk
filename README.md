@@ -1,191 +1,63 @@
-# Czk
+# czk
 
-Wrapper around `czkawka_cli` with a focus on usability and easier analysis.
+A CLI wrapper around [`czkawka_cli`](https://github.com/qarmin/czkawka) focused on usability and easier analysis of duplicate images and videos.
 
-This repository is intentionally scoped to the `czk` CLI only.
+## Features
+
+- Dry-run and live deletion modes with colorized, grouped terminal output
+- CSV and JSON reports per run
+- Interactive SQL analysis via DuckDB
+- Self-contained HTML visual report with inline image/video previews, search, and pagination
 
 ## Requirements
 
-- macOS or Linux shell environment
-- `czkawka_cli` for duplicate detection/removal
-- `duckdb` CLI for `czk analyze` interactive SQL sessions
-- `python` + `uv` for the `czk` wrapper CLI
+- macOS or Linux
+- [`czkawka_cli`](https://github.com/qarmin/czkawka) — duplicate detection engine
+- [`duckdb`](https://duckdb.org/) CLI — required for `czk analyze`
+- Python + [`uv`](https://github.com/astral-sh/uv)
 
-## Quick Start
-
-- Install the Python CLI wrapper:
+## Installation
 
 ```bash
 uv tool install --editable .
 ```
 
-- Then run:
+## Usage
 
 ```bash
-czk test [directory]
-# alias:
-czk check [directory]
-czk execute [directory]
-czk analyze [directory]
-# alias:
-czk analyse [directory]
-czk viz [directory]
+czk test <directory>      # Dry run — scan for duplicates, no deletion
+czk execute <directory>   # Delete duplicates (AEB strategy)
+czk analyze <directory>   # Interactive DuckDB SQL session over scan results
+czk viz <directory>       # Generate a self-contained HTML visual report
 ```
 
-## czk (Python CLI Wrapper)
+`czk check` is an alias for `czk test`; `czk analyse` is an alias for `czk analyze`.
 
-High-level wrapper over `czkawka_cli` for image/video duplicate workflows with grouped, colorized terminal output plus CSV reports.
+## Options
 
-### Commands
+| Flag | Description |
+|---|---|
+| `--media {both,images,videos}` | Media type to scan (default: `both`) |
+| `-s, --similarity-preset` | Image similarity preset: `Original`, `VeryHigh`, `High`, `Medium`, `Small`, `VerySmall`, `Minimal` (default: `High`) |
+| `-c, --hash-size {8,16,32,64}` | Perceptual hash size for images (default: `32`) |
+| `-g, --hash-alg` | Hash algorithm for images: `Mean`, `Gradient`, `Blockhash`, `VertGradient`, `DoubleGradient`, `Median` (default: `Gradient`) |
+| `-z, --image-filter` | Resize filter for images: `Lanczos3`, `Nearest`, `Triangle`, `Faussian`, `Catmullrom` (default: `Nearest`) |
+| `-t, --tolerance 0..20` | Similarity tolerance for videos (default: `10`) |
+| `--top N` | Limit duplicate groups in previews (default: `50`) |
+| `--all` | Show all duplicate groups, overrides `--top` |
+| `--out-dir <path>` | Output directory (default: `<system-temp>/czk-reports`) |
+| `--no-color` | Disable colored output |
 
-- `czk test [directory]`
-  - Alias: `czk check [directory]`
-  - Dry run (no deletion)
-  - Generates JSON + CSV reports
-  - Prints counts and a table preview
+## Output
 
-- `czk execute [directory]`
-  - Performs actual duplicate deletion via Czkawka (`AEB` strategy)
-  - Generates JSON + CSV reports
-  - Prints counts and a table preview
+Each run writes timestamped artifacts to the output directory:
 
-- `czk analyze [directory]` (alias: `czk analyse [directory]`)
-  - Runs dry-run scans (no deletion) for selected media
-  - Generates JSON + CSV reports
-  - Loads reports + media inventory into an in-memory DuckDB session
-  - Opens interactive DuckDB shell for arbitrary SQL queries
+- `<base>-<media>-<YYYYMMDD-HHMMSS>.json`
+- `<base>-<media>-<YYYYMMDD-HHMMSS>.csv`
+- `<base>-viz-<YYYYMMDD-HHMMSS>.html` (`czk viz` only)
 
-- `czk viz [directory]`
-  - Runs dry-run scans (no deletion) for selected media
-  - Generates JSON + CSV reports (same schema/contracts as other modes)
-  - Generates a self-contained HTML report with inline image/video previews
-  - Uses dark mode by default with a top-page toggle for light mode
-  - Splits each media report into `Overview` and `Results` sections
-  - Uses collapsible duplicate-group cards (collapsed by default)
-  - Adds per-section filename search (partial match across keep/remove filenames)
-  - Auto-expands matching cards while filtering
-  - Adds per-section pagination controls with page sizes: `25`, `50`, `100`
-  - Pagination buttons are ordered: `First`, `Previous`, `Next`, `Last`
-  - Adds per-item action: `Open` (file, new tab)
-  - Shows metadata per item: `Size`, `Modified`, and `Resolution` (images when available)
-  - Includes `Show all` / `Collapse all` controls per media section
-  - Attempts to auto-open the HTML report in the default browser
-  - `--top N` limits duplicate groups rendered in the HTML visual preview
-  - `--all` renders all duplicate groups (overrides `--top`)
+CSV columns: `index`, `file_to_keep`, `files_to_remove`, `count`
 
-### Default behavior
+## Disclaimer
 
-- Scans both images and videos (`--media both`)
-- Image mode uses:
-  - `--similarity-preset High`
-  - `--hash-size 32`
-  - `--hash-alg Gradient`
-  - `--image-filter Nearest`
-- Video mode uses:
-  - `--tolerance 10`
-- Writes timestamped artifacts in shared temp folder by default:
-  - `<system-temp>/czk-reports`
-- `--out-dir` overrides the default output location
-
-### Useful options
-
-- `--media {both,images,videos}`
-- `-c, --hash-size {8,16,32,64}`
-- `--hash-alg {Mean,Gradient,Blockhash,VertGradient,DoubleGradient,Median}` (image scans)
-- `--image-filter {Lanczos3,Nearest,Triangle,Faussian,Catmullrom}` (image scans)
-- `-s, --similarity-preset {Minimal,VeryLow,Low,Medium,High,VeryHigh,None}` (image scans)
-- `-t, --tolerance 0..20` (videos only)
-- `--top N` (preview groups to render; default 50)
-- `--all` (show all duplicate groups; overrides `--top` when both are provided)
-- `--out-dir <path>` (override default shared temp reports folder)
-- `--no-color` (force plain output; default is auto-color on TTY)
-
-### Output files
-
-Per media type, per run:
-
-- JSON: `<base-folder>-<media>-<YYYYMMDD-HHMMSS>.json`
-- CSV: `<base-folder>-<media>-<YYYYMMDD-HHMMSS>.csv`
-
-For `czk viz`, per run:
-
-- HTML: `<base-folder>-viz-<YYYYMMDD-HHMMSS>.html`
-- JSON/CSV artifacts are still generated per selected media type
-
-Viz preview details:
-
-- duplicate groups render as card blocks instead of table rows
-- card summary uses readable labels (`Group`, `File to Keep`, `Marked for Removal`)
-- full filesystem paths are not shown as visible text in cards
-- each media report shows `Overview` + `Results` sections
-
-Default location when `--out-dir` is omitted:
-
-- `<system-temp>/czk-reports`
-
-CSV columns:
-
-1. `index`
-2. `file_to_keep`
-3. `files_to_remove` (JSON array string)
-4. `count` (number of files to remove)
-
-### Reported metrics
-
-Per media section (human-readable labels in terminal):
-
-- `Total Files Scanned`
-- `Duplicate Groups Found`
-- `Files Marked for Removal` (red value)
-- `Estimated Files Remaining` (green value)
-
-### Output structure (concise)
-
-Each run prints grouped sections in this order:
-
-1. Run header (`mode`, `target_dir`, `out_dir`, `timestamp`, `media`)
-2. Per-media section (`images`, `videos`):
-   - full command output + exit code
-   - summary table (human-readable labels)
-   - artifact paths
-   - duplicate preview:
-     - wide terminals: `index`, `file_to_keep`, `remove_count`, `first_remove`
-     - medium terminals: `index`, `file_to_keep`, `remove_count`
-     - narrow terminals: bordered list-style groups
-
-Command display notes:
-
-- Command output reflects the exact executed command arguments.
-- Paths/values are shown in full and shell-quoted where needed for copy/paste debugging.
-
-### Analyze mode: DuckDB tables
-
-`czk analyze`/`czk analyse` preloads these tables before opening shell.
-Media tables are created only for the selected media (`--media`):
-
-- `media_inventory`
-  - `media_type`, `path`, `file_name`, `extension`, `size_bytes`, `modified_epoch`
-- `duplicates_images`, `duplicates_videos`
-  - `index`, `file_to_keep`, `files_to_remove`, `count`
-- `duplicates_images_json`, `duplicates_videos_json`
-  - JSON-derived rows with columns:
-    `group_index`, `item_index`, `path`, `size_bytes`, `modified_date`, `raw_item_json`, `source_report`
-- `duplicates_images_expanded`, `duplicates_videos_expanded`
-  - `group_index`, `file_to_keep`, `remove_path`, `remove_ordinal`, `group_remove_count`
-
-Starter queries:
-
-```sql
-SELECT COUNT(*) FROM media_inventory;
-SELECT * FROM duplicates_images LIMIT 10;
-SELECT * FROM duplicates_images_json LIMIT 10;
-SELECT * FROM duplicates_images_expanded LIMIT 10;
-```
-
-## AI Disclosure and Liability
-
-- Parts of this project were generated or assisted by AI tooling.
-- You are responsible for reviewing and validating all commands before running them, especially deletion workflows.
-- This software is provided "as is", without warranties of any kind.
-- By using this project, you accept full responsibility for any outcomes, including data loss.
-- The authors/maintainers are not liable for any direct or indirect damages resulting from use of this project.
+Parts of this project were assisted by AI tooling. Review all commands carefully before running, especially deletion workflows. This software is provided "as is" without warranties of any kind. The authors are not liable for any data loss or other damages resulting from use.
