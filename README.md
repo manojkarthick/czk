@@ -19,6 +19,12 @@ A CLI wrapper around [`czkawka_cli`](https://github.com/qarmin/czkawka) focused 
 ## Installation
 
 ```bash
+# From PyPI (recommended)
+uv tool install czk-tool
+# or with pip
+pip install czk-tool
+
+# From source
 uv tool install --editable .
 ```
 
