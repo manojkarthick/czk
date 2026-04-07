@@ -1,0 +1,25 @@
+class Czk < Formula
+  include Language::Python::Virtualenv
+
+  desc "CLI wrapper around czkawka_cli for duplicate media workflows"
+  homepage "https://github.com/manojkarthick/czk"
+  url "{{SDIST_URL}}"
+  sha256 "{{SDIST_SHA256}}"
+  version "{{VERSION}}"
+  license "MIT"
+
+  depends_on "python@3.14"
+  depends_on "czkawka"
+  depends_on "duckdb"
+
+{{RESOURCES}}
+
+  def install
+    virtualenv_install_with_resources
+    bin.install_symlink libexec/"bin/czk"
+  end
+
+  test do
+    assert_match "{{VERSION}}", shell_output("#{bin}/czk --version")
+  end
+end

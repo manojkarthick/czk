@@ -20,14 +20,25 @@ jobs:
       - name: Set up Python 3.14
         run: uv python install 3.14
 
+      - name: Extract version
+        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
+
+      - name: Check if version exists on PyPI
+        run: |
+          if curl -fsS -o /dev/null "https://pypi.org/pypi/czk-tool/${{ env.VERSION }}/json"; then
+            echo "PYPI_VERSION_EXISTS=true" >> $GITHUB_ENV
+            echo "czk-tool ${{ env.VERSION }} already exists on PyPI; skipping publish."
+          else
+            echo "PYPI_VERSION_EXISTS=false" >> $GITHUB_ENV
+            echo "czk-tool ${{ env.VERSION }} not found on PyPI; publishing."
+          fi
+
       - name: Build package
         run: uv build
 
       - name: Publish to PyPI
+        if: env.PYPI_VERSION_EXISTS != 'true'
         run: uv publish
-
-      - name: Extract version
-        run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
 
       - name: Install homebrew-pypi-poet
         run: |
@@ -48,44 +59,22 @@ jobs:
             echo "Timed out waiting for PyPI metadata for czk-tool ${{ env.VERSION }}"
             exit 1
           fi
-          SDIST_URL=$(echo "$PYPI_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(next(f['url'] for f in d['urls'] if f['packagetype']=='sdist'))")
-          SDIST_SHA256=$(echo "$PYPI_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(next(f['digests']['sha256'] for f in d['urls'] if f['packagetype']=='sdist'))")
+          SDIST_URL=$(printf '%s' "$PYPI_JSON" | jq -r '.urls[] | select(.packagetype == "sdist") | .url')
+          SDIST_SHA256=$(printf '%s' "$PYPI_JSON" | jq -r '.urls[] | select(.packagetype == "sdist") | .digests.sha256')
           RESOURCES=$(poet-venv/bin/poet czk-tool)
           VERSION="${{ env.VERSION }}" SDIST_URL="$SDIST_URL" SDIST_SHA256="$SDIST_SHA256" RESOURCES="$RESOURCES" python3 << 'PYEOF'
           import os
-          version = os.environ["VERSION"]
-          url = os.environ["SDIST_URL"]
-          sha256 = os.environ["SDIST_SHA256"]
-          resources = os.environ["RESOURCES"].rstrip()
-          lines = [
-              "class Czk < Formula",
-              "  include Language::Python::Virtualenv",
-              "",
-              '  desc "CLI wrapper around czkawka_cli for duplicate media workflows"',
-              '  homepage "https://github.com/manojkarthick/czk"',
-              f'  url "{url}"',
-              f'  sha256 "{sha256}"',
-              f'  version "{version}"',
-              '  license "MIT"',
-              "",
-              '  depends_on "python@3.14"',
-              '  depends_on "czkawka"',
-              '  depends_on "duckdb"',
-              "",
-              resources,
-              "",
-              "  def install",
-              "    virtualenv_install_with_resources",
-              "  end",
-              "",
-              "  test do",
-              f'    assert_match "{version}", shell_output("' + "#{bin}" + '/czk --version")',
-              "  end",
-              "end",
-              "",
-          ]
-          with open("czk.rb", "w") as f:
-              f.write("\n".join(lines))
+          from pathlib import Path
+
+          formula = (
+              Path(".github/templates/czk.rb.tmpl")
+              .read_text()
+              .replace("{{VERSION}}", os.environ["VERSION"])
+              .replace("{{SDIST_URL}}", os.environ["SDIST_URL"])
+              .replace("{{SDIST_SHA256}}", os.environ["SDIST_SHA256"])
+              .replace("{{RESOURCES}}", os.environ["RESOURCES"].rstrip())
+          )
+          Path("czk.rb").write_text(formula)
           PYEOF
 
       - name: Checkout homebrew-tap
