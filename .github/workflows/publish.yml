@@ -33,7 +33,9 @@ jobs:
         run: |
           uv venv --python 3.14 poet-venv
           for i in $(seq 1 20); do
-            if uv pip install --python poet-venv setuptools homebrew-pypi-poet czk-tool==${{ env.VERSION }}; then
+            # homebrew-pypi-poet still imports pkg_resources, which was removed
+            # in setuptools 82+.
+            if uv pip install --python poet-venv 'setuptools<82' homebrew-pypi-poet czk-tool==${{ env.VERSION }}; then
               exit 0
             fi
             echo "Attempt $i: czk-tool ${{ env.VERSION }} not yet available, retrying in 30s..."
@@ -53,7 +55,7 @@ jobs:
           version = os.environ["VERSION"]
           url = os.environ["SDIST_URL"]
           sha256 = os.environ["SDIST_SHA256"]
-          resources = os.environ["RESOURCES"].strip()
+          resources = os.environ["RESOURCES"].rstrip()
           lines = [
               "class Czk < Formula",
               "  include Language::Python::Virtualenv",
