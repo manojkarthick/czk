@@ -33,7 +33,7 @@ jobs:
         run: |
           uv venv --python 3.14 poet-venv
           for i in $(seq 1 20); do
-            if uv pip install --python poet-venv homebrew-pypi-poet czk-tool==${{ env.VERSION }}; then
+            if uv pip install --python poet-venv setuptools homebrew-pypi-poet czk-tool==${{ env.VERSION }}; then
               exit 0
             fi
             echo "Attempt $i: czk-tool ${{ env.VERSION }} not yet available, retrying in 30s..."
