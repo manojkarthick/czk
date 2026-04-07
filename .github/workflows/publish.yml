@@ -32,21 +32,22 @@ jobs:
       - name: Install homebrew-pypi-poet
         run: |
           uv venv --python 3.14 poet-venv
-          for i in $(seq 1 20); do
-            # homebrew-pypi-poet still imports pkg_resources, which was removed
-            # in setuptools 82+.
-            if uv pip install --python poet-venv 'setuptools<82' homebrew-pypi-poet czk-tool==${{ env.VERSION }}; then
-              exit 0
-            fi
-            echo "Attempt $i: czk-tool ${{ env.VERSION }} not yet available, retrying in 30s..."
-            sleep 30
-          done
-          echo "Timed out waiting for czk-tool ${{ env.VERSION }} on PyPI"
-          exit 1
+          # homebrew-pypi-poet still imports pkg_resources, which was removed
+          # in setuptools 82+.
+          uv pip install --python poet-venv 'setuptools<82' homebrew-pypi-poet "dist/czk_tool-${{ env.VERSION }}-py3-none-any.whl"
 
       - name: Generate Homebrew formula
         run: |
-          PYPI_JSON=$(curl -s https://pypi.org/pypi/czk-tool/${{ env.VERSION }}/json)
+          PYPI_JSON=""
+          for i in $(seq 1 20); do
+            PYPI_JSON=$(curl -fsS https://pypi.org/pypi/czk-tool/${{ env.VERSION }}/json) && break
+            echo "Attempt $i: PyPI metadata for czk-tool ${{ env.VERSION }} not yet available, retrying in 15s..."
+            sleep 15
+          done
+          if [ -z "$PYPI_JSON" ]; then
+            echo "Timed out waiting for PyPI metadata for czk-tool ${{ env.VERSION }}"
+            exit 1
+          fi
           SDIST_URL=$(echo "$PYPI_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(next(f['url'] for f in d['urls'] if f['packagetype']=='sdist'))")
           SDIST_SHA256=$(echo "$PYPI_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); print(next(f['digests']['sha256'] for f in d['urls'] if f['packagetype']=='sdist'))")
           RESOURCES=$(poet-venv/bin/poet czk-tool)
