@@ -30,7 +30,7 @@ jobs:
         run: echo "VERSION=${GITHUB_REF_NAME#v}" >> $GITHUB_ENV
 
       - name: Install homebrew-pypi-poet
-        run: uv pip install --python 3.14 homebrew-pypi-poet czk-tool==${{ env.VERSION }}
+        run: uv pip install --python 3.14 --system homebrew-pypi-poet czk-tool==${{ env.VERSION }}
 
       - name: Generate Homebrew formula
         run: |
