@@ -31,21 +31,21 @@ def build_czkawka_command(
     media: MediaType,
     target_dir: Path,
     pretty_json_path: Path,
-    dry_run: bool,
     image_similarity: int,
     hash_size: int,
     hash_alg: str,
     image_filter: str,
     video_tolerance: int,
 ) -> list[str]:
-    """Build the Czkawka CLI command for a single media scan.
+    """Build the Czkawka CLI command for a single scan-only media run.
+
+    Czkawka never deletes anything; `czk` picks keepers and deletes files itself.
 
     Args:
         executable: Path to the `czkawka_cli` binary.
         media: Media mode (`images` or `videos`).
         target_dir: Directory to scan.
         pretty_json_path: Destination path for Czkawka's pretty JSON output.
-        dry_run: Whether to run in dry-run mode.
         image_similarity: Max difference value (0-40) for image scanning.
         hash_size: Perceptual hash size for images.
         hash_alg: Hash algorithm for image scanning.
@@ -69,8 +69,6 @@ def build_czkawka_command(
             hash_alg,
             "-z",
             image_filter,
-            "-D",
-            "AEB",
             "-p",
             str(pretty_json_path),
             "-W",
@@ -83,15 +81,10 @@ def build_czkawka_command(
             str(target_dir),
             "-t",
             str(video_tolerance),
-            "-D",
-            "AEB",
             "-p",
             str(pretty_json_path),
             "-W",
         ]
-
-    if dry_run:
-        command.append("--dry-run")
 
     return command
 

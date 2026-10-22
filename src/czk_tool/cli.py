@@ -31,6 +31,7 @@ from .report import (
     build_rows,
     build_summary,
     build_visual_rows_from_csv,
+    delete_marked_files,
     load_duplicate_groups,
     write_csv,
 )
@@ -102,6 +103,7 @@ class _MediaRunResult:
     summary: MediaSummary
     json_path: Path
     csv_path: Path
+    delete_failures: list[str]
 
 
 def _optional_int(value: Any) -> int | None:
@@ -298,7 +300,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     _add_common_arguments(test_parser)
 
-    execute_parser = subparsers.add_parser("execute", help="Run duplicate deletion.")
+    execute_parser = subparsers.add_parser("execute", help="Move duplicates to the OS trash.")
     _add_common_arguments(execute_parser)
 
     analyze_parser = subparsers.add_parser(
@@ -446,8 +448,7 @@ def _scan_one_media(
     image_filter: str,
     image_similarity: int,
     video_tolerance: int,
-    dry_run: bool,
-    report_mode: Literal["test", "execute"],
+    delete: bool,
 ) -> _MediaRunResult:
     """Run one media scan and persist normalized report artifacts.
 
@@ -463,8 +464,7 @@ def _scan_one_media(
         image_filter: Image filter algorithm.
         image_similarity: Image max difference value (0-40).
         video_tolerance: Video tolerance value.
-        dry_run: Whether Czkawka should run with `--dry-run`.
-        report_mode: Row projection mode used for CSV normalization.
+        delete: Whether to trash the files marked for removal after writing the CSV.
 
     Returns:
         Media run details with command metadata and report paths.
@@ -482,7 +482,6 @@ def _scan_one_media(
         media=media,
         target_dir=target_dir,
         pretty_json_path=json_path,
-        dry_run=dry_run,
         image_similarity=image_similarity,
         hash_size=hash_size,
         hash_alg=hash_alg,
@@ -493,8 +492,9 @@ def _scan_one_media(
     completed = run_czkawka(command)
 
     groups = load_duplicate_groups(json_path)
-    rows = build_rows(groups, mode=report_mode)
+    rows = build_rows(groups)
     write_csv(rows, csv_path)
+    delete_failures = delete_marked_files(rows) if delete else []
 
     summary = build_summary(total_found=total_found, duplicate_groups=len(groups), rows=rows)
     return _MediaRunResult(
@@ -503,6 +503,7 @@ def _scan_one_media(
         summary=summary,
         json_path=json_path,
         csv_path=csv_path,
+        delete_failures=delete_failures,
     )
 
 
@@ -522,7 +523,7 @@ def _run_one_media(
     image_similarity: int,
     video_tolerance: int,
     top: int,
-) -> tuple[Path, Path]:
+) -> _MediaRunResult:
     """Run one media workflow from scan through rendered reporting.
 
     Args:
@@ -542,10 +543,8 @@ def _run_one_media(
         top: Preview row limit for terminal output.
 
     Returns:
-        Tuple of report paths `(json_path, csv_path)` for this media run.
+        Media run details for this media run.
     """
-    dry_run = mode != "execute"
-    report_mode: Literal["test", "execute"] = "execute" if mode == "execute" else "test"
     result = _scan_one_media(
         media=media,
         target_dir=target_dir,
@@ -558,8 +557,7 @@ def _run_one_media(
         image_filter=image_filter,
         image_similarity=image_similarity,
         video_tolerance=video_tolerance,
-        dry_run=dry_run,
-        report_mode=report_mode,
+        delete=mode == "execute",
     )
 
     renderer.render_media_header(media=media, mode=mode, command=result.command)
@@ -573,8 +571,13 @@ def _run_one_media(
         shown_rows=shown_rows,
         total_rows=total_rows,
     )
+    if result.delete_failures:
+        renderer.render_error(
+            f"{len(result.delete_failures)} {media} deletion(s) failed or were skipped",
+            "\n".join(result.delete_failures),
+        )
 
-    return result.json_path, result.csv_path
+    return result
 
 
 def _run_viz(
@@ -628,8 +631,7 @@ def _run_viz(
             image_filter=image_filter,
             image_similarity=image_similarity,
             video_tolerance=video_tolerance,
-            dry_run=True,
-            report_mode="test",
+            delete=False,
         )
         groups = load_duplicate_groups(result.json_path)
         metadata_by_path = _build_viz_metadata(groups)
@@ -724,7 +726,7 @@ def _run_analyze(
     expanded_rows: dict[MediaType, list[ExpandedDuplicateRow]] = {}
 
     for media in media_targets:
-        json_path, csv_path = _run_one_media(
+        result = _run_one_media(
             renderer=renderer,
             mode="analyze",
             media=media,
@@ -740,9 +742,9 @@ def _run_analyze(
             video_tolerance=video_tolerance,
             top=top,
         )
-        duplicate_json_paths[media] = json_path
-        duplicate_csv_paths[media] = csv_path
-        expanded_rows[media] = build_expanded_rows(csv_path, media)
+        duplicate_json_paths[media] = result.json_path
+        duplicate_csv_paths[media] = result.csv_path
+        expanded_rows[media] = build_expanded_rows(result.csv_path, media)
 
     inventory_rows = collect_media_inventory(target_dir, media_targets)
     renderer.render_duckdb_intro(media_targets)
@@ -827,8 +829,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 top=preview_limit,
             )
 
+        has_delete_failures = False
         for media in media_targets:
-            _run_one_media(
+            result = _run_one_media(
                 renderer=renderer,
                 mode=mode,
                 media=media,
@@ -844,7 +847,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 video_tolerance=args.video_tolerance,
                 top=preview_limit,
             )
-        return 0
+            has_delete_failures = has_delete_failures or bool(result.delete_failures)
+        return 1 if has_delete_failures else 0
     except (RuntimeError, ValueError) as exc:
         renderer.render_error("Run failed", str(exc))
         return 1

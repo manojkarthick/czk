@@ -4,9 +4,9 @@ import csv
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
-Mode = Literal["test", "execute"]
+from send2trash import send2trash
 
 CSV_COLUMNS = ["index", "file_to_keep", "files_to_remove", "count"]
 
@@ -135,8 +135,8 @@ def _modified_date_value(item: dict[str, Any]) -> int:
     return 0
 
 
-def _project_group_aeb(group: list[dict[str, Any]]) -> tuple[str, list[str]]:
-    """Project keep/remove decisions using AEB-style ordering rules.
+def _select_keep_and_remove(group: list[dict[str, Any]]) -> tuple[str, list[str]]:
+    """Pick the file to keep: biggest first, newest on size tie, then lexicographically first path.
 
     Args:
         group: Duplicate group payload.
@@ -148,7 +148,7 @@ def _project_group_aeb(group: list[dict[str, Any]]) -> tuple[str, list[str]]:
         group,
         key=lambda item: (
             -_size_value(item),
-            _modified_date_value(item),
+            -_modified_date_value(item),
             _path_value(item),
         ),
     )
@@ -157,49 +157,11 @@ def _project_group_aeb(group: list[dict[str, Any]]) -> tuple[str, list[str]]:
     return keep, remove
 
 
-def _exists(path: str) -> bool:
-    """Check whether a filesystem path currently exists.
-
-    Args:
-        path: Filesystem path string.
-
-    Returns:
-        `True` when the path exists, else `False`.
-    """
-    try:
-        return Path(path).exists()
-    except OSError:
-        return False
-
-
-def _resolve_execute_group(group: list[dict[str, Any]]) -> tuple[str, list[str]]:
-    """Resolve keep/remove files for execute mode with filesystem reconciliation.
-
-    Args:
-        group: Duplicate group payload.
-
-    Returns:
-        Tuple of `(file_to_keep, files_to_remove)`.
-    """
-    projected_keep, projected_remove = _project_group_aeb(group)
-    all_paths = [_path_value(item) for item in group]
-    existing = [path for path in all_paths if _exists(path)]
-    removed = [path for path in all_paths if path not in existing]
-
-    # Only treat as authoritative when exactly one file remains and at least one is gone.
-    if len(existing) == 1 and removed:
-        keep = existing[0]
-        remove = sorted(removed)
-        return keep, remove
-    return projected_keep, projected_remove
-
-
-def build_rows(groups: list[list[dict[str, Any]]], mode: Mode) -> list[DuplicateRow]:
+def build_rows(groups: list[list[dict[str, Any]]]) -> list[DuplicateRow]:
     """Build normalized, sorted duplicate rows from grouped report payload.
 
     Args:
         groups: Duplicate groups from JSON report.
-        mode: Processing mode (`test` or `execute`).
 
     Returns:
         Sorted duplicate rows with reassigned 1-based index values.
@@ -208,10 +170,7 @@ def build_rows(groups: list[list[dict[str, Any]]], mode: Mode) -> list[Duplicate
     for group in groups:
         if not group:
             continue
-        if mode == "execute":
-            file_to_keep, files_to_remove = _resolve_execute_group(group)
-        else:
-            file_to_keep, files_to_remove = _project_group_aeb(group)
+        file_to_keep, files_to_remove = _select_keep_and_remove(group)
 
         row = DuplicateRow(
             index=0,
@@ -231,6 +190,33 @@ def build_rows(groups: list[list[dict[str, Any]]], mode: Mode) -> list[Duplicate
         )
         for index, row in enumerate(rows, start=1)
     ]
+
+
+def delete_marked_files(rows: list[DuplicateRow]) -> list[str]:
+    """Move every `files_to_remove` path to the OS trash.
+
+    Groups whose keeper is gone are skipped. Trash uses the OS trash: macOS Trash,
+    Windows Recycle Bin, or the freedesktop.org trash on Linux.
+
+    Args:
+        rows: Duplicate rows describing keep/remove decisions.
+
+    Returns:
+        Human-readable failure messages; empty when every deletion succeeded.
+    """
+    failures: list[str] = []
+    for row in rows:
+        if not Path(row.file_to_keep).is_file():
+            failures.append(f"Skipped group {row.index}: keeper missing: {row.file_to_keep}")
+            continue
+        for path in row.files_to_remove:
+            if not Path(path).exists():
+                continue
+            try:
+                send2trash(path)
+            except OSError as exc:
+                failures.append(f"Failed to delete {path}: {exc}")
+    return failures
 
 
 def write_csv(rows: list[DuplicateRow], csv_path: Path) -> None:

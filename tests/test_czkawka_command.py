@@ -18,7 +18,6 @@ class CzkawkaCommandTests(unittest.TestCase):
             media="images",
             target_dir=Path("/tmp/data"),
             pretty_json_path=Path("/tmp/report.json"),
-            dry_run=True,
             image_similarity="High",
             hash_size=32,
             hash_alg="Blockhash",
@@ -31,7 +30,7 @@ class CzkawkaCommandTests(unittest.TestCase):
         self.assertIn("Blockhash", command)
         self.assertIn("-z", command)
         self.assertIn("Catmullrom", command)
-        self.assertIn("--dry-run", command)
+        self.assertNotIn("-D", command)
 
     def test_build_video_command_ignores_image_specific_flags(self) -> None:
         command = build_czkawka_command(
@@ -39,7 +38,6 @@ class CzkawkaCommandTests(unittest.TestCase):
             media="videos",
             target_dir=Path("/tmp/data"),
             pretty_json_path=Path("/tmp/report.json"),
-            dry_run=False,
             image_similarity="High",
             hash_size=32,
             hash_alg="Median",
@@ -52,7 +50,7 @@ class CzkawkaCommandTests(unittest.TestCase):
         self.assertNotIn("Median", command)
         self.assertNotIn("-z", command)
         self.assertNotIn("Faussian", command)
-        self.assertNotIn("--dry-run", command)
+        self.assertNotIn("-D", command)
 
 
 if __name__ == "__main__":
