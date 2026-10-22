@@ -14,6 +14,22 @@ from czk_tool import cli
 from czk_tool.cli import parse_args
 
 
+def _media_result(delete_failures: list[str] | None = None) -> cli._MediaRunResult:
+    return cli._MediaRunResult(
+        command=["/opt/homebrew/bin/czkawka_cli", "image"],
+        exit_code=0,
+        summary=cli.MediaSummary(
+            total_found=10,
+            duplicate_groups=2,
+            duplicates_to_remove=3,
+            after_remove_estimate=7,
+        ),
+        json_path=Path("/tmp/a.json"),
+        csv_path=Path("/tmp/a.csv"),
+        delete_failures=delete_failures or [],
+    )
+
+
 class CliArgTests(unittest.TestCase):
     def test_test_defaults(self) -> None:
         args = parse_args(["test"])
@@ -132,7 +148,7 @@ class CliArgTests(unittest.TestCase):
 
     def test_main_does_not_render_combined_summary(self) -> None:
         with patch.object(cli, "ensure_czkawka_cli", return_value="/opt/homebrew/bin/czkawka_cli"), patch.object(
-            cli, "_run_one_media", return_value=None
+            cli, "_run_one_media", return_value=_media_result()
         ), patch.object(cli.Renderer, "render_run_header"), patch.object(
             cli.Renderer, "render_combined_summary", create=True
         ) as combined_mock:
@@ -143,7 +159,7 @@ class CliArgTests(unittest.TestCase):
     def test_main_analyze_runs_duckdb_after_scan(self) -> None:
         with patch.object(cli, "ensure_czkawka_cli", return_value="/opt/homebrew/bin/czkawka_cli"), patch.object(
             cli, "ensure_duckdb_cli", return_value="/opt/homebrew/bin/duckdb"
-        ), patch.object(cli, "_run_one_media", return_value=(Path("/tmp/a.json"), Path("/tmp/a.csv"))) as run_media_mock, patch.object(
+        ), patch.object(cli, "_run_one_media", return_value=_media_result()) as run_media_mock, patch.object(
             cli, "collect_media_inventory", return_value=[]
         ), patch.object(
             cli, "build_expanded_rows", return_value=[]
@@ -165,6 +181,28 @@ class CliArgTests(unittest.TestCase):
             launch_mock.assert_called_once()
             self.assertIn("duplicate_json_paths", launch_mock.call_args.kwargs)
 
+    def test_main_execute_returns_nonzero_on_delete_failures(self) -> None:
+        with patch.object(cli, "ensure_czkawka_cli", return_value="/opt/homebrew/bin/czkawka_cli"), patch.object(
+            cli, "_run_one_media", return_value=_media_result(["Failed to delete /tmp/x.jpg: denied"])
+        ), patch.object(cli.Renderer, "render_run_header"):
+            exit_code = cli.main(["execute", ".", "--media", "images", "--no-color"])
+            self.assertEqual(exit_code, 1)
+
+    def test_main_only_execute_deletes(self) -> None:
+        for mode, expected in (("test", False), ("analyze", False), ("execute", True)):
+            with self.subTest(mode=mode), patch.object(
+                cli, "ensure_czkawka_cli", return_value="/opt/homebrew/bin/czkawka_cli"
+            ), patch.object(cli, "ensure_duckdb_cli", return_value="/opt/homebrew/bin/duckdb"), patch.object(
+                cli, "_scan_one_media", return_value=_media_result()
+            ) as scan_mock, patch.object(
+                cli, "build_preview_rows_from_csv", return_value=([], 0, 0)
+            ), patch.object(cli, "build_expanded_rows", return_value=[]), patch.object(
+                cli, "collect_media_inventory", return_value=[]
+            ), patch.object(cli, "launch_duckdb_session", return_value=0), patch.object(cli, "Renderer"):
+                exit_code = cli.main([mode, ".", "--media", "images", "--no-color"])
+                self.assertEqual(exit_code, 0)
+                self.assertEqual(scan_mock.call_args.kwargs["delete"], expected)
+
     def test_main_analyze_missing_duckdb_returns_nonzero(self) -> None:
         with patch.object(cli, "ensure_czkawka_cli", return_value="/opt/homebrew/bin/czkawka_cli"), patch.object(
             cli, "ensure_duckdb_cli", side_effect=RuntimeError("duckdb CLI is missing")
@@ -179,7 +217,7 @@ class CliArgTests(unittest.TestCase):
             cli,
             "_scan_one_media",
             return_value=cli._MediaRunResult(
-                command=["/opt/homebrew/bin/czkawka_cli", "image", "--dry-run"],
+                command=["/opt/homebrew/bin/czkawka_cli", "image"],
                 exit_code=0,
                 summary=cli.MediaSummary(
                     total_found=10,
@@ -189,6 +227,7 @@ class CliArgTests(unittest.TestCase):
                 ),
                 json_path=Path("/tmp/demo-images.json"),
                 csv_path=Path("/tmp/demo-images.csv"),
+                delete_failures=[],
             ),
         ) as scan_mock, patch.object(
             cli, "build_visual_rows_from_csv", return_value=([], 0, 0)
@@ -207,6 +246,7 @@ class CliArgTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 0)
             self.assertEqual(scan_mock.call_count, 1)
+            self.assertFalse(scan_mock.call_args.kwargs["delete"])
             self.assertEqual(scan_mock.call_args.kwargs["hash_alg"], "Gradient")
             self.assertEqual(scan_mock.call_args.kwargs["image_filter"], "Nearest")
             self.assertEqual(build_visual_mock.call_args.kwargs["top"], sys.maxsize)
@@ -225,7 +265,7 @@ class CliArgTests(unittest.TestCase):
         with patch.object(cli.tempfile, "gettempdir", return_value="/tmp/czk-temp"), patch.object(
             cli, "ensure_czkawka_cli", return_value="/opt/homebrew/bin/czkawka_cli"
         ), patch.object(
-            cli, "_run_one_media", return_value=(Path("/tmp/a.json"), Path("/tmp/a.csv"))
+            cli, "_run_one_media", return_value=_media_result()
         ) as run_media_mock, patch.object(
             cli.Renderer, "render_run_header"
         ):
@@ -240,7 +280,7 @@ class CliArgTests(unittest.TestCase):
         with patch.object(cli.tempfile, "gettempdir", return_value="/tmp/czk-temp"), patch.object(
             cli, "ensure_czkawka_cli", return_value="/opt/homebrew/bin/czkawka_cli"
         ), patch.object(
-            cli, "_run_one_media", return_value=(Path("/tmp/a.json"), Path("/tmp/a.csv"))
+            cli, "_run_one_media", return_value=_media_result()
         ) as run_media_mock, patch.object(
             cli.Renderer, "render_run_header"
         ):
@@ -252,7 +292,7 @@ class CliArgTests(unittest.TestCase):
 
     def test_main_all_overrides_top_for_terminal_preview(self) -> None:
         with patch.object(cli, "ensure_czkawka_cli", return_value="/opt/homebrew/bin/czkawka_cli"), patch.object(
-            cli, "_run_one_media", return_value=(Path("/tmp/a.json"), Path("/tmp/a.csv"))
+            cli, "_run_one_media", return_value=_media_result()
         ) as run_media_mock, patch.object(cli.Renderer, "render_run_header"):
             exit_code = cli.main(
                 ["test", ".", "--media", "images", "--top", "5", "--all", "--no-color"]

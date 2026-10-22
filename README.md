@@ -32,7 +32,7 @@ uv tool install --editable .
 
 ```bash
 czk test <directory>      # Dry run — scan for duplicates, no deletion
-czk execute <directory>   # Delete duplicates (AEB strategy)
+czk execute <directory>   # Move duplicates to the OS trash (keep biggest; newest on size tie)
 czk analyze <directory>   # Interactive DuckDB SQL session over scan results
 czk viz <directory>       # Generate a self-contained HTML visual report
 ```
@@ -63,6 +63,12 @@ Each run writes timestamped artifacts to the output directory:
 - `<base>-viz-<YYYYMMDD-HHMMSS>.html` (`czk viz` only)
 
 CSV columns: `index`, `file_to_keep`, `files_to_remove`, `count`
+
+## Keep rule
+
+`czkawka_cli` only scans; `czk` decides which file to keep and does the deletion itself, so the CSV always matches what `execute` deletes. In each group it keeps the biggest file. If sizes tie, it keeps the most recently modified one, then falls back to the lexicographically first path (ascending Unicode code point order, e.g. `messages/` before `timeline/`).
+
+`execute` moves removed files to the OS trash (macOS Trash, Windows Recycle Bin, freedesktop.org trash on Linux) via [Send2Trash](https://github.com/arsenetar/send2trash), so they can be restored.
 
 ## Disclaimer
 
